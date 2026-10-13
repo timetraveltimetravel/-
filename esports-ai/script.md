@@ -23,7 +23,7 @@
 
 사실 기계가 사람을 이긴 것은 오래된 일입니다. 자동차는 볼트보다 빠르고, 지게차는 역도 선수보다 무거운 것을 듭니다.
 
-e스포츠에서도 2019년에 AI가 프로 팀을 이겼습니다. 하지만 2024년 롤드컵 결승에서 페이커 선수의 경기를 약 690만 명이 동시에 봤습니다. 잠실야구장 약 290개를 꽉 채우는 숫자입니다.
+피칭 머신은 투수보다 빠른 공을 지치지 않고 던집니다. 그래도 우리는 투수가 던지는 공 하나에 숨을 죽입니다.
 
 기계가 더 잘해도, 우리는 여전히 사람의 경기를 봅니다.
 
@@ -72,4 +72,3 @@ A. 맞습니다. 그런 '사람의 부분'이 클수록 대체가 어렵습니�
 - 이세돌 vs 알파고 (2016. 3.), 이세돌 9단 은퇴 보도 (CNN, 2019. 11. 27.)
 - Shin, M. 외 (2023). Superhuman artificial intelligence can improve human decision-making by increasing novelty. PNAS, 120(12).
 - Engadget (2019. 4. 23.). OpenAI Five Arena 결과
-- esports.gg (2024). Worlds 2024 Finals is the most-watched esports match in history.
