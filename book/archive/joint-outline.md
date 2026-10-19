@@ -1,5 +1,7 @@
 # 목차 초안
 
+> **보관본.** 두 기둥(VR 월드, AI정치)을 한 책에 함께 다룬 판이다. 저자가 두 책으로 나누기로 해서(analysis/author.md N43, 2026-10-19) 더 쓰지 않는다. VR 월드 책을 쓸 때 참고한다. AI정치 책은 book/ai-politics/에 있다.
+
 **저자 검토용 초안이다.** 저자의 답(analysis/author.md N1~N42)과 analysis/decisions.md를 따라 짰다. 장과 절의 제목은 임시다. 절마다 네 가지를 적었다.
 
 - 무엇을 쓰는가
