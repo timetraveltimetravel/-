@@ -12,6 +12,10 @@
 | `questions.md` | 원고 확인 질문과 저자의 답(N52~N55). |
 | `merge_book.py` | 장별 원고를 `manuscript.md`로 합치는 스크립트. |
 | `factcheck.md` | 법 조문, 결정, 숫자를 원문과 대조한 기록. |
+| `AI정치_종합정리.hwpx` | 한글 파일 종합 정리본. 1부 한눈에 보기, 2부 원고 전문, 3부 부록(작가가 정한 것, 사실 확인, 나중에 고칠 것, 표기, 근거와 확인). |
+| `종합정리.md` | 위 한글 파일의 원본 마크다운. `build_hwpx.py`가 만든다. |
+| `overview.md`, `decisions-summary.md` | 종합 정리본의 1부(한눈에 보기)와 부록 가(작가가 정한 것). |
+| `build_hwpx.py` | 종합 정리본을 엮어 한글 파일로 만드는 스크립트. |
 
 장은 이렇다.
 - 서론 — 지금 체제 그대로, 주체만 바꾼다
@@ -29,6 +33,13 @@
 
 ```
 python3 merge_book.py .
+```
+
+한글 종합 정리본을 다시 만들려면 python-hwpx가 필요하다.
+
+```
+pip install python-hwpx==6.8.0
+python3 build_hwpx.py .
 ```
 
 ## 표기
