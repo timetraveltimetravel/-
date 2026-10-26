@@ -6,6 +6,8 @@
 
 | 파일 | 내용 |
 |---|---|
+| `polished.md` | **다듬은 판(원고 2판).** 장별 초고를 합쳐 다듬은 한 권짜리 원고. 표를 모두 글로 풀고, 장 사이의 중복과 괄호 참조를 줄였다. 작업 노트는 넣지 않았다. |
+| `AI정치_다듬은원고.hwpx` | 다듬은 판의 한글 파일. `build_polished.py`로 만든다. |
 | `manuscript.md` | 합친 원고. 서론부터 맺음까지 차례대로 잇고, 장마다의 근거와 확인을 책 끝 부록으로 모았다. |
 | `ch00-introduction.md` ~ `ch07-conclusion.md` | 장별 원고. 원본은 이 파일들이다. 각 파일 끝에 '근거와 확인'이 있다. |
 | `outline.md` | 목차. 원고에 맞춰 고쳤다. |
@@ -16,6 +18,7 @@
 | `종합정리.md` | 위 한글 파일의 원본 마크다운. `build_hwpx.py`가 만든다. |
 | `overview.md`, `decisions-summary.md` | 종합 정리본의 1부(한눈에 보기)와 부록 가(작가가 정한 것). |
 | `build_hwpx.py` | 종합 정리본을 엮어 한글 파일로 만드는 스크립트. |
+| `build_polished.py`, `hwpx_writer.py` | 다듬은 판을 한글 파일로 만드는 스크립트와, 두 빌드 스크립트가 함께 쓰는 변환 모듈. |
 
 장은 이렇다.
 - 서론 — 지금 체제 그대로, 주체만 바꾼다
@@ -39,8 +42,11 @@ python3 merge_book.py .
 
 ```
 pip install python-hwpx==6.8.0
-python3 build_hwpx.py .
+python3 build_hwpx.py .      # 종합 정리본
+python3 build_polished.py .  # 다듬은 판
 ```
+
+다듬은 판(polished.md)은 장별 초고에서 자동으로 만들지 않는다. 초고를 고치면 다듬은 판도 손으로 맞춰 고친다.
 
 ## 표기
 
