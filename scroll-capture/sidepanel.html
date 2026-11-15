@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>스크롤 캡처</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <h1>스크롤 캡처</h1>
+    <p id="state" class="state" data-state="idle">대기 중</p>
+  </header>
+
+  <section class="controls">
+    <button id="toggle" class="primary" type="button">캡처 시작</button>
+    <button id="auto" type="button">자동 스크롤</button>
+  </section>
+
+  <section class="options">
+    <label class="row">
+      <span>자동 스크롤 속도</span>
+      <select id="speed">
+        <option value="slow">느림</option>
+        <option value="normal" selected>보통</option>
+        <option value="fast">빠름</option>
+      </select>
+    </label>
+    <label class="row">
+      <span>자동 스크롤의 최대 화면 수</span>
+      <input id="maxScreens" type="number" min="1" max="1000" value="100">
+    </label>
+    <label class="check">
+      <input id="hideFixed" type="checkbox" checked>
+      <span>고정 메뉴 숨기기</span>
+    </label>
+  </section>
+
+  <section class="status" aria-live="polite">
+    <dl>
+      <div><dt>사진</dt><dd id="count">0장</dd></div>
+      <div><dt>전체 길이</dt><dd id="length">0 px</dd></div>
+      <div><dt>누락 영역</dt><dd id="gaps">0개</dd></div>
+    </dl>
+    <p id="message" class="message"></p>
+  </section>
+
+  <section class="preview">
+    <h2>미리 보기</h2>
+    <div id="thumbs" class="thumbs"></div>
+    <p id="empty" class="empty">캡처한 사진이 없습니다.</p>
+  </section>
+
+  <section class="save">
+    <fieldset>
+      <legend>형식</legend>
+      <label><input type="radio" name="format" value="png" checked> PNG</label>
+      <label><input type="radio" name="format" value="jpeg"> JPEG</label>
+    </fieldset>
+    <fieldset>
+      <legend>저장 방식</legend>
+      <label><input type="radio" name="mode" value="long" checked> 긴 사진 한 장</label>
+      <label><input type="radio" name="mode" value="each"> 화면별 여러 장</label>
+    </fieldset>
+    <div class="controls">
+      <button id="save" class="primary" type="button" disabled>사진 저장</button>
+      <button id="reset" type="button" disabled>초기화</button>
+    </div>
+  </section>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
