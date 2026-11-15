@@ -56,6 +56,7 @@
     return {
       scrollY: doc ? window.scrollY : el.scrollTop,
       scrollHeight: el.scrollHeight,
+      maxScrollY: Math.max(0, el.scrollHeight - el.clientHeight),
       rect,
       viewportW: window.innerWidth,
       viewportH: window.innerHeight,
@@ -122,21 +123,45 @@
     state.hidden = [];
   }
 
-  // dy 픽셀을 스크롤한다. duration이 0보다 크면 그 시간 동안 부드럽게 이동한다.
-  async function scrollBy(dy, duration) {
+  const scrollTarget = () => {
     const el = state.scroller || docScroller();
-    const target = isDoc(el) ? window : el;
-    const read = () => (isDoc(el) ? window.scrollY : el.scrollTop);
+    return {
+      read: () => (isDoc(el) ? window.scrollY : el.scrollTop),
+      to: (top) => (isDoc(el) ? window : el).scrollTo({ top, behavior: 'instant' }),
+    };
+  };
+
+  // 다음 화면 그리기를 기다린다. 탭이 화면에 없으면 화면 그리기가 없다. 그 경우에는 시간으로 기다린다.
+  const nextFrame = () =>
+    new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      requestAnimationFrame(finish);
+      setTimeout(finish, 100);
+    });
+
+  // 이동 경로를 따라서 스크롤한다. path: [[시간(ms), 이동한 거리(px)], ...]
+  async function scrollPath(path) {
+    const { read, to } = scrollTarget();
     const start = read();
     const startedAt = performance.now();
-    while (duration > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 16));
-      const t = Math.min(1, (performance.now() - startedAt) / duration);
-      if (t >= 1) break;
-      const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2; // 천천히 시작하고 천천히 멈춘다
-      target.scrollTo({ top: start + dy * eased, behavior: 'instant' });
+    const last = path[path.length - 1];
+    let i = 1;
+    for (;;) {
+      await nextFrame();
+      const t = performance.now() - startedAt;
+      if (t >= last[0]) break;
+      while (i < path.length - 1 && path[i][0] <= t) i += 1;
+      const [t0, y0] = path[i - 1];
+      const [t1, y1] = path[i];
+      const ratio = t1 > t0 ? Math.min(1, Math.max(0, (t - t0) / (t1 - t0))) : 1;
+      to(start + y0 + (y1 - y0) * ratio);
     }
-    target.scrollTo({ top: start + dy, behavior: 'instant' });
+    to(start + last[1]);
   }
 
   async function handle(msg) {
@@ -147,8 +172,14 @@
         return metrics();
       case 'sc-metrics':
         return metrics();
-      case 'sc-scroll-by':
-        await scrollBy(msg.dy, msg.duration || 0);
+      case 'sc-scroll-by': {
+        const { read, to } = scrollTarget();
+        to(read() + msg.dy);
+        await afterPaint();
+        return metrics();
+      }
+      case 'sc-scroll-path':
+        await scrollPath(msg.path);
         await afterPaint();
         return metrics();
       case 'sc-hide-fixed':

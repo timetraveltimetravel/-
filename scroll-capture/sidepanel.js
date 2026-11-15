@@ -1,6 +1,6 @@
 // 측면 패널: 캡처를 제어하고, 사진을 보관하고, 파일로 저장한다.
 import { planStitch, segmentsInChunk, chunkLimit, captureScale } from './stitch.js';
-import { nextMove } from './pace.js';
+import { createPacer, fullStep } from './pace.js';
 import { recognizeCanvas, stopOcr, upscaleFor } from './ocr.js';
 
 // Chrome은 1초 동안의 화면 캡처 횟수를 제한한다 (현재 값: 2회).
@@ -49,6 +49,7 @@ const state = {
   lastCaptureAt: 0,
   chain: Promise.resolve(),
   lastSaved: [], // 시험에서 결과를 확인할 때 사용한다
+  random: Math.random, // 시험에서 같은 동작을 반복할 때 다른 함수로 바꾼다
 };
 window.__scDebug = state;
 
@@ -247,30 +248,52 @@ async function stop(text = '') {
 async function autoScroll() {
   state.auto = true;
   render();
+  let pacer = createPacer(ui.speed.value, state.random);
   let finished = '';
   try {
     while (state.capturing && state.auto) {
-      const here = await enqueueCapture();
-      if (!state.capturing || !state.auto) break;
+      // 가장 아래쪽에서 캡처한 위치. 이 위치보다 아래에 있으면 새 내용이 있다.
+      const frontier = () => state.captures.reduce((max, c) => Math.max(max, c.y), -Infinity);
+      let info = await send('sc-metrics');
+      if (info.scrollY > frontier() + 1) {
+        info = (await enqueueCapture()) || info;
+        if (!state.capturing || !state.auto) break;
+      }
+      if (!state.captures.length) {
+        await sleep(300); // 첫 사진을 캡처하지 못했다. 다시 시도한다.
+        continue;
+      }
       const limit = Math.max(1, Number(ui.maxScreens.value) || 100);
       if (state.captures.length >= limit) {
         finished = `최대 화면 수(${limit})에 도달했습니다. 캡처를 정지했습니다.`;
         break;
       }
-      const info = here || (await send('sc-metrics'));
-      const move = nextMove(ui.speed.value, info.rect.h);
-      let moved = await send('sc-scroll-by', { dy: move.dy, duration: move.duration });
 
       // 페이지의 끝이면 새 내용을 기다린다 (무한 스크롤).
-      const deadline = Date.now() + END_WAIT_MS;
-      while (moved.scrollY - info.scrollY < 1 && Date.now() < deadline && state.auto) {
-        await sleep(250);
-        moved = await send('sc-scroll-by', { dy: move.dy });
+      const front = frontier();
+      if (Math.abs(info.scrollY - front) <= 1 && info.scrollY >= info.maxScrollY - 2) {
+        const deadline = Date.now() + END_WAIT_MS;
+        let grown = false;
+        while (!grown && Date.now() < deadline && state.auto) {
+          await sleep(250);
+          const now = await send('sc-metrics');
+          grown = now.maxScrollY > info.maxScrollY + 1;
+        }
+        if (!grown) {
+          if (state.auto) finished = '페이지의 끝입니다. 캡처를 정지했습니다.';
+          break;
+        }
+        continue;
       }
-      if (moved.scrollY - info.scrollY < 1) {
-        if (state.auto) finished = '페이지의 끝입니다. 캡처를 정지했습니다.';
-        break;
-      }
+
+      if (pacer.speed !== ui.speed.value) pacer = createPacer(ui.speed.value, state.random);
+      const move = pacer.next({
+        viewHeight: info.rect.h,
+        room: front + fullStep(info.rect.h) - info.scrollY,
+        canGoUp: info.scrollY > 40,
+      });
+      if (move.path) await send('sc-scroll-path', { path: move.path });
+      else if (move.dy) await send('sc-scroll-by', { dy: move.dy });
       await sleep(move.pause);
     }
   } catch (error) {

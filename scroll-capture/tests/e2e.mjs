@@ -394,30 +394,79 @@ test('scale: 화면 배율 1.5에서 이음매가 정확하다', async (browser,
   return `사진 ${await captureCount(panel)}장 → ${files[0].width}x${files[0].height}px`;
 }, { scale: 1.5 });
 
-test('random: 불규칙한 속도로 스크롤하고, 누락 영역이 없이 캡처한다', async (browser, base) => {
+test('natural: 자연스러운 속도로 스크롤하고, 누락 영역이 없이 캡처한다', async (browser, base) => {
   const rows = 100;
   const { page, panel } = await open(browser, `${base}/plain?rows=${rows}`);
   const view = await viewOf(page);
-  // 스크롤 중의 위치를 기록한다: 한 번에 이동하지 않고 부드럽게 이동하는지 확인한다.
+  // 같은 동작을 반복하도록 난수 함수를 바꾼다.
+  await panel.evaluate(() => {
+    let a = 20261115;
+    window.__scDebug.random = () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  });
+  // 스크롤의 움직임을 기록한다: [시간(ms), 위치(px)]
   await page.evaluate(() => {
-    window.__positions = new Set();
-    addEventListener('scroll', () => window.__positions.add(Math.round(scrollY)), { passive: true });
+    window.__track = [[performance.now(), scrollY]];
+    addEventListener('scroll', () => window.__track.push([performance.now(), scrollY]), { passive: true });
   });
   await runAuto(panel, 'random');
+  const track = await page.evaluate(() => window.__track);
+  if (process.env.TRACK_FILE) await writeFile(process.env.TRACK_FILE, JSON.stringify(track));
+
+  // 위로 이동한 횟수: 위치가 30px 이상 감소한 구간의 수
+  let ups = 0;
+  let peak = track[0][1];
+  let falling = false;
+  for (const [, y] of track) {
+    if (y > peak) {
+      peak = y;
+      falling = false;
+    } else if (!falling && peak - y >= 30) {
+      ups += 1;
+      falling = true;
+    }
+    if (falling && y >= peak) falling = false;
+  }
+  assert(ups >= 1, '위로 이동하지 않았다');
+  // 부드러운 이동: 한 번에 화면의 1/3보다 많이 이동하지 않는다.
+  let jump = 0;
+  for (let k = 1; k < track.length; k += 1) jump = Math.max(jump, Math.abs(track[k][1] - track[k - 1][1]));
+  assert(jump < view.h / 3, `한 번에 이동한 최대 거리 ${Math.round(jump)}px`);
+  assert(track.length > 300, `기록한 위치 ${track.length}개`);
+
   const ys = await panel.evaluate(() => window.__scDebug.captures.map((c) => c.y).sort((a, b) => a - b));
-  const steps = ys.slice(1).map((y, i) => Math.round(y - ys[i]));
-  const inner = steps.slice(0, -1); // 마지막 이동은 페이지의 끝에서 멈춘다
-  assert(new Set(inner).size >= Math.min(5, inner.length), `이동 거리의 종류 ${[...new Set(inner)]}`);
-  assert(steps.every((d) => d > 0 && d < view.h), `이동 거리 ${steps}`);
-  const positions = await page.evaluate(() => window.__positions.size);
-  assert(positions > steps.length * 3, `스크롤 중의 위치 ${positions}개`);
+  const steps = ys.slice(1).map((y, k) => Math.round(y - ys[k]));
+  assert(steps.every((d) => d > 0 && d < view.h), `캡처 위치의 간격 ${steps}`);
   const files = await save(panel);
   const docHeight = HEADER + rows * ROW;
   assert(files[0].height === docHeight, `높이 ${files[0].height}, 기대 ${docHeight}`);
   const col = await checkColumn(panel, { x: 100, scale: 1, header: HEADER, rows });
   assert(col.bad === 0, `색이 다른 픽셀 ${col.bad}개 ${JSON.stringify(col.samples)}`);
   assert((await panel.textContent('#gaps')) === '0개', '누락 영역이 있다');
-  return `사진 ${ys.length}장, 이동 거리 ${Math.min(...inner)}~${Math.max(...inner)}px, 스크롤 중의 위치 ${positions}개`;
+  const seconds = (track.at(-1)[0] - track[0][0]) / 1000;
+  return `사진 ${ys.length}장, 위로 이동 ${ups}번, 기록한 위치 ${track.length}개, 한 번에 이동한 최대 거리 ${Math.round(jump)}px, 스크롤 시간 ${seconds.toFixed(1)}초`;
+});
+
+test('natural-inner: 자연스러운 속도로 안쪽 스크롤 영역과 무한 스크롤 페이지를 캡처한다', async (browser, base) => {
+  const notes = [];
+  for (const [path, rows, header, x] of [['/inner', 80, 0, 50], ['/infinite', 120, HEADER, 100]]) {
+    const { panel } = await open(browser, `${base}${path}`);
+    await runAuto(panel, 'random');
+    const files = await save(panel);
+    const want = header + rows * ROW;
+    assert(files[0].height === want, `${path}: 높이 ${files[0].height}, 기대 ${want}`);
+    const col = await checkColumn(panel, { x, scale: 1, header, rows });
+    assert(col.bad === 0, `${path}: 색이 다른 픽셀 ${col.bad}개 ${JSON.stringify(col.samples)}`);
+    assert((await panel.textContent('#gaps')) === '0개', `${path}: 누락 영역이 있다`);
+    notes.push(`${path} 사진 ${await captureCount(panel)}장 → ${files[0].height}px`);
+    await panel.close();
+  }
+  return notes.join(', ');
 });
 
 test('ocr: 사진 안의 글자를 텍스트로 변환하고 TXT 파일로 저장한다', async (browser, base) => {
