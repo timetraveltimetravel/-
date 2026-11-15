@@ -71,6 +71,39 @@ const pages = {
     <div class="top"></div><div class="wrap"><div class="side"></div><div id="list">${rowsHtml(0, 80)}</div></div>`,
 };
 
+// 글자가 있는 페이지: 텍스트 변환의 시험에 사용한다.
+const SENTENCES = [
+  '스크롤 캡처는 화면을 순서대로 저장하는 프로그램입니다.',
+  '사용자는 버튼 하나로 캡처를 시작하고 정지합니다.',
+  '프로그램은 겹친 부분을 자르고 사진을 이어 붙입니다.',
+  '개인정보는 브라우저 밖으로 나가지 않습니다.',
+  '2026년 11월 15일 기준으로 시험 12개가 통과했습니다.',
+  'The quick brown fox jumps over the lazy dog.',
+  '가격은 12,500원이고 할인율은 15%입니다.',
+];
+pages['/text'] = () => `<!doctype html><title>긴 기사 예시</title><style>
+    body { margin: 0; font: 16px/1.7 sans-serif; color: #222; }
+    nav { position: sticky; top: 0; background: #1f3a8a; color: #fff; padding: 14px 24px; font-weight: 700; }
+    main { max-width: 720px; margin: 0 auto; padding: 8px 24px 80px; }
+    h2 { margin-top: 32px; }
+  </style><nav>사이트 메뉴</nav><main><h1>긴 기사 예시</h1>${Array.from({ length: 8 }, (_, i) =>
+    `<h2>${i + 1}. 섹션 제목</h2><p>${SENTENCES.slice(i % 4, (i % 4) + 4).join(' ')}</p><p>${SENTENCES.slice((i + 2) % 5, ((i + 2) % 5) + 3).join(' ')}</p>`).join('')}</main>`;
+
+// 글자 단위의 오류율: 편집 거리 / 정답의 글자 수. 빈칸과 줄 바꿈은 비교하지 않는다.
+function errorRate(truth, text) {
+  const a = truth.replace(/\s+/g, '');
+  const b = text.replace(/\s+/g, '');
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length] / a.length;
+}
+
 function startServer() {
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -133,8 +166,8 @@ const captureCount = (panel) => panel.evaluate(() => window.__scDebug.captures.l
 const viewOf = (page) => page.evaluate(() => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio }));
 
 // 자동 스크롤을 시작하고, 프로그램이 캡처를 정지할 때까지 기다린다.
-async function runAuto(panel) {
-  await panel.selectOption('#speed', 'fast');
+async function runAuto(panel, speed = 'fast') {
+  await panel.selectOption('#speed', speed);
   await panel.click('#auto');
   await panel.waitForFunction(() => window.__scDebug.auto, null, { timeout: 15_000 });
   await waitIdle(panel);
@@ -360,6 +393,77 @@ test('scale: 화면 배율 1.5에서 이음매가 정확하다', async (browser,
   assert(col.bad === 0, `색이 다른 픽셀 ${col.bad}개 ${JSON.stringify(col.samples)}`);
   return `사진 ${await captureCount(panel)}장 → ${files[0].width}x${files[0].height}px`;
 }, { scale: 1.5 });
+
+test('random: 불규칙한 속도로 스크롤하고, 누락 영역이 없이 캡처한다', async (browser, base) => {
+  const rows = 100;
+  const { page, panel } = await open(browser, `${base}/plain?rows=${rows}`);
+  const view = await viewOf(page);
+  // 스크롤 중의 위치를 기록한다: 한 번에 이동하지 않고 부드럽게 이동하는지 확인한다.
+  await page.evaluate(() => {
+    window.__positions = new Set();
+    addEventListener('scroll', () => window.__positions.add(Math.round(scrollY)), { passive: true });
+  });
+  await runAuto(panel, 'random');
+  const ys = await panel.evaluate(() => window.__scDebug.captures.map((c) => c.y).sort((a, b) => a - b));
+  const steps = ys.slice(1).map((y, i) => Math.round(y - ys[i]));
+  const inner = steps.slice(0, -1); // 마지막 이동은 페이지의 끝에서 멈춘다
+  assert(new Set(inner).size >= Math.min(5, inner.length), `이동 거리의 종류 ${[...new Set(inner)]}`);
+  assert(steps.every((d) => d > 0 && d < view.h), `이동 거리 ${steps}`);
+  const positions = await page.evaluate(() => window.__positions.size);
+  assert(positions > steps.length * 3, `스크롤 중의 위치 ${positions}개`);
+  const files = await save(panel);
+  const docHeight = HEADER + rows * ROW;
+  assert(files[0].height === docHeight, `높이 ${files[0].height}, 기대 ${docHeight}`);
+  const col = await checkColumn(panel, { x: 100, scale: 1, header: HEADER, rows });
+  assert(col.bad === 0, `색이 다른 픽셀 ${col.bad}개 ${JSON.stringify(col.samples)}`);
+  assert((await panel.textContent('#gaps')) === '0개', '누락 영역이 있다');
+  return `사진 ${ys.length}장, 이동 거리 ${Math.min(...inner)}~${Math.max(...inner)}px, 스크롤 중의 위치 ${positions}개`;
+});
+
+test('ocr: 사진 안의 글자를 텍스트로 변환하고 TXT 파일로 저장한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/text`);
+  const truth = await page.evaluate(() => document.body.innerText);
+  await runAuto(panel);
+  await panel.click('#ocr');
+  await panel.waitForFunction(() => window.__scDebug.ocr, null, { timeout: 15_000 });
+  await panel.waitForFunction(() => !window.__scDebug.ocr, null, { timeout: 180_000 });
+  assert(await panel.isVisible('#ocrText'), '텍스트 영역이 보이지 않는다');
+  const text = await panel.inputValue('#ocrText');
+  const rate = errorRate(truth, text);
+  assert(rate < 0.08, `글자 오류율 ${(rate * 100).toFixed(1)}%`);
+  for (const phrase of ['스크롤 캡처는 화면을 순서대로 저장하는 프로그램입니다.', 'quick brown fox']) {
+    assert(text.includes(phrase), `변환한 텍스트에 "${phrase}"가 없다`);
+  }
+  // 변환은 브라우저 안에서 수행한다: 외부 주소로 요청을 보내지 않아야 한다.
+  const external = await panel.evaluate(() =>
+    performance.getEntriesByType('resource').map((e) => e.name).filter((u) => !u.startsWith('chrome-extension://') && !u.startsWith('data:') && !u.startsWith('blob:')));
+  assert(external.length === 0, `외부 요청 ${external}`);
+
+  await panel.click('#ocrSave');
+  await panel.waitForFunction(() => !window.__scDebug.saving && window.__scDebug.lastSaved[0]?.filename.endsWith('.txt'), null, { timeout: 30_000 });
+  const saved = await panel.evaluate(async () => {
+    const { filename, blob } = window.__scDebug.lastSaved[0];
+    return { filename, type: blob.type, body: await blob.text() };
+  });
+  assert(/^긴 기사 예시_\d{8}-\d{6}\.txt$/.test(saved.filename), `파일 이름 ${saved.filename}`);
+  assert(saved.body.startsWith('제목: 긴 기사 예시\n주소: http://127.0.0.1'), `파일의 첫 부분 ${saved.body.slice(0, 60)}`);
+  assert(saved.body.includes(text), '파일에 변환한 텍스트가 없다');
+  return `글자 ${truth.replace(/\s+/g, '').length}개, 오류율 ${(rate * 100).toFixed(1)}%, 파일 "${saved.filename}"`;
+});
+
+test('ocr-stop: 텍스트 변환을 정지할 수 있다', async (browser, base) => {
+  const { panel } = await open(browser, `${base}/text`);
+  await runAuto(panel);
+  await panel.click('#ocr');
+  await panel.waitForFunction(() => window.__scDebug.ocr, null, { timeout: 15_000 });
+  assert((await panel.textContent('#ocr')) === '변환 정지', '버튼의 글자가 "변환 정지"가 아니다');
+  await panel.click('#ocr');
+  await panel.waitForFunction(() => !window.__scDebug.ocr, null, { timeout: 60_000 });
+  const status = await panel.textContent('#ocrStatus');
+  assert(status === '변환을 정지했습니다.', status);
+  assert(!(await panel.isVisible('#ocrText')), '정지한 후에 텍스트 영역이 보인다');
+  return status;
+});
 
 test('quota: 캡처 간격은 Chrome의 캡처 제한보다 길다', async (browser, base) => {
   const { panel } = await open(browser, `${base}/plain?rows=100`);

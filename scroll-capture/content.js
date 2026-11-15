@@ -122,6 +122,23 @@
     state.hidden = [];
   }
 
+  // dy 픽셀을 스크롤한다. duration이 0보다 크면 그 시간 동안 부드럽게 이동한다.
+  async function scrollBy(dy, duration) {
+    const el = state.scroller || docScroller();
+    const target = isDoc(el) ? window : el;
+    const read = () => (isDoc(el) ? window.scrollY : el.scrollTop);
+    const start = read();
+    const startedAt = performance.now();
+    while (duration > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 16));
+      const t = Math.min(1, (performance.now() - startedAt) / duration);
+      if (t >= 1) break;
+      const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2; // 천천히 시작하고 천천히 멈춘다
+      target.scrollTo({ top: start + dy * eased, behavior: 'instant' });
+    }
+    target.scrollTo({ top: start + dy, behavior: 'instant' });
+  }
+
   async function handle(msg) {
     switch (msg.type) {
       case 'sc-init':
@@ -130,13 +147,10 @@
         return metrics();
       case 'sc-metrics':
         return metrics();
-      case 'sc-scroll-by': {
-        const el = state.scroller || docScroller();
-        if (isDoc(el)) window.scrollBy({ top: msg.dy, behavior: 'instant' });
-        else el.scrollBy({ top: msg.dy, behavior: 'instant' });
+      case 'sc-scroll-by':
+        await scrollBy(msg.dy, msg.duration || 0);
         await afterPaint();
         return metrics();
-      }
       case 'sc-hide-fixed':
         hideFixed(msg.mode);
         await afterPaint();

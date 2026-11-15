@@ -24,6 +24,7 @@
         <option value="slow">느림</option>
         <option value="normal" selected>보통</option>
         <option value="fast">빠름</option>
+        <option value="random">불규칙 (사람처럼)</option>
       </select>
     </label>
     <label class="row">
@@ -65,6 +66,19 @@
     <div class="controls">
       <button id="save" class="primary" type="button" disabled>사진 저장</button>
       <button id="reset" type="button" disabled>초기화</button>
+    </div>
+  </section>
+
+  <section class="text">
+    <h2>텍스트 변환</h2>
+    <div class="controls">
+      <button id="ocr" type="button" disabled>텍스트 변환</button>
+    </div>
+    <p id="ocrStatus" class="message"></p>
+    <textarea id="ocrText" rows="10" spellcheck="false" aria-label="변환한 텍스트" hidden></textarea>
+    <div id="ocrActions" class="controls" hidden>
+      <button id="ocrSave" class="primary" type="button">TXT 저장</button>
+      <button id="ocrCopy" type="button">복사</button>
     </div>
   </section>
 
