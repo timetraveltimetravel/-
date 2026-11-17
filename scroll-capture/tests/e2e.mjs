@@ -130,7 +130,7 @@ async function launch({ scale, locale = 'C.UTF-8' } = {}) {
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
   const context = await chromium.launchPersistentContext(join(work, 'profile'), {
-    channel: 'chromium',
+    channel: process.env.SC_CHANNEL || 'chromium',
     headless: true,
     viewport: null,
     env: { ...process.env, LANG: locale, LC_ALL: locale },
@@ -535,6 +535,67 @@ test('quota: 캡처 간격은 Chrome의 캡처 제한보다 길다', async (brow
   }
   assert(times.length >= 8 && worst <= perSecond, `1초 동안 최대 ${worst}회 (캡처 ${times.length}회)`);
   return `Chrome의 제한: 1초에 ${perSecond}회. 측정 값: 1초에 최대 ${worst}회 (캡처 ${times.length}회)`;
+});
+
+// 시험용 복사본의 manifest.json의 버전을 바꾼다 (git pull이 새 버전을 받은 상태와 같다).
+async function setDiskVersion(browser, version) {
+  const manifestPath = join(browser.work, 'ext', 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.version = version;
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+}
+const loadedVersion = (worker) => worker.evaluate(() => chrome.runtime.getManifest().version);
+
+test('update: 폴더의 버전이 바뀌면 패널에 알리고, 패널을 닫은 후에 다시 로드한다', async (browser, base) => {
+  const { context, worker } = browser;
+  const { panel } = await open(browser, `${base}/plain?rows=20`);
+  const before = await loadedVersion(worker);
+  assert((await panel.textContent('#version')) === `버전 ${before}`, `버전 표시 ${await panel.textContent('#version')}`);
+
+  // 버전이 같으면 아무것도 하지 않는다.
+  const same = await worker.evaluate(() => self.__scUpdate.check());
+  assert(same.action === 'none', `버전이 같을 때의 동작 ${same.action}`);
+  assert(!(await panel.isVisible('#update')), '새 버전이 없는데 알림이 보인다');
+
+  // 측면 패널이 열려 있다: 다시 로드하지 않고 알린다.
+  const next = '99.0.1';
+  await setDiskVersion(browser, next);
+  const open1 = await worker.evaluate(() => self.__scUpdate.check());
+  assert(open1.action === 'notify' && open1.version === next, `패널이 열려 있을 때의 동작 ${JSON.stringify(open1)}`);
+  await panel.waitForSelector('#update:not([hidden])', { timeout: 5000 });
+  const notice = await panel.textContent('#updateText');
+  assert(notice.includes(next), `알림 ${notice}`);
+  assert((await loadedVersion(worker)) === before, '패널이 열려 있는데 다시 로드했다');
+
+  // 측면 패널을 닫았다: 다시 로드한다. 새 서비스 워커가 시작한다.
+  await panel.close();
+  const [reloaded] = await Promise.all([
+    context.waitForEvent('serviceworker', { timeout: 30_000 }),
+    worker.evaluate(() => { self.__scUpdate.check(); }).catch(() => {}),
+  ]);
+  const after = await loadedVersion(reloaded);
+  assert(after === next, `다시 로드한 후의 버전 ${after}`);
+  const settled = await reloaded.evaluate(() => self.__scUpdate.check());
+  assert(settled.action === 'none', `다시 로드한 후의 동작 ${settled.action}`);
+  return `버전 ${before} → ${after}`;
+});
+
+test('update-apply: "지금 적용"을 누르면 바로 다시 로드한다', async (browser, base) => {
+  const { context, worker } = browser;
+  const { panel } = await open(browser, `${base}/plain?rows=20`);
+  const before = await loadedVersion(worker);
+  const next = '99.0.2';
+  await setDiskVersion(browser, next);
+  // 패널을 다시 열면 패널이 확인을 요청한다.
+  await panel.reload();
+  await panel.waitForSelector('#update:not([hidden])', { timeout: 15_000 });
+  const [reloaded] = await Promise.all([
+    context.waitForEvent('serviceworker', { timeout: 30_000 }),
+    panel.click('#updateApply').catch(() => {}),
+  ]);
+  const after = await loadedVersion(reloaded);
+  assert(after === next, `다시 로드한 후의 버전 ${after}`);
+  return `버전 ${before} → ${after}`;
 });
 
 // ---------- 실행 ----------

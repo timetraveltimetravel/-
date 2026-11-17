@@ -1,0 +1,2 @@
+# Windows PowerShell 5.1은 BOM이 있는 UTF-8과 CRLF 줄 바꿈이 필요하다.
+*.ps1 text eol=crlf

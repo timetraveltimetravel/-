@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "스크롤 캡처",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "웹 페이지를 스크롤할 때 화면을 캡처하고, 사진 또는 텍스트로 저장합니다.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
     "scripting",
     "sidePanel",
-    "downloads"
+    "downloads",
+    "alarms"
   ],
   "action": {
     "default_title": "스크롤 캡처 열기",
@@ -24,7 +25,8 @@
     "128": "icons/icon128.png"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "side_panel": {
     "default_path": "sidepanel.html"

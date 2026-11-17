@@ -3,8 +3,8 @@
 이 문서는 다른 세션이 이 작업을 계속하기 위한 기록입니다.
 이 문서는 대화의 원문이 아닙니다. 대화에서 한 요청, 결정, 작업, 측정 값을 정리한 것입니다.
 
-- 작성일: 2026-11-16
-- 현재 버전: 0.3.0
+- 작성일: 2026-11-16 (2026-11-17에 0.4.0의 내용을 추가)
+- 현재 버전: 0.4.0
 - 브랜치: `claude/wizardly-cannon-esdvrm`
 - 사용 설명서: 같은 폴더의 `README.md`
 
@@ -13,7 +13,8 @@
 "스크롤 캡처"는 Chrome 확장 프로그램입니다. 사용자가 웹 페이지를 스크롤할 때 화면을 캡처하고,
 겹친 부분을 자르고, 긴 사진 한 장으로 이어 붙입니다. 사진 안의 글자를 텍스트로 변환할 수도 있습니다.
 
-0.3.0은 완성된 상태입니다. 자동 시험은 모두 통과합니다. 실제 웹사이트에서는 아직 시험하지 않았습니다.
+0.4.0은 자동 업데이트를 추가한 버전입니다. 사용자의 PC에 설치했고, 예약 작업을 등록했습니다.
+0.4.0의 변경은 아직 커밋하지 않았습니다 (3절). 실제 웹사이트에서는 아직 시험하지 않았습니다.
 
 ## 2. 요청의 기록 (시간 순서)
 
@@ -27,33 +28,33 @@
 | 6 | 업데이트할 때 기존의 것을 업데이트하는 방법 | 방법 2개를 안내했다: 같은 폴더에 덮어쓰기, 또는 git |
 | 7 | 방법 2(git)로 진행. 직접 실행 | 클라우드 세션은 사용자의 PC에 접근할 수 없다. 사용자의 PC에서 동작하는 세션이 필요하다 |
 | 8 | 다른 세션이 계속할 수 있게 기록을 파일로 작성 | 이 문서 |
+| 9 | 이 문서를 보고 자동 업데이트 기능을 추가 | 0.4.0: 사용자의 PC에 git으로 복제했다. 예약 작업의 스크립트와 확장 프로그램의 다시 로드 기능을 만들었다 |
+| 10 | Chrome이 "매니페스트 파일이 없거나 읽을 수 없습니다"를 보고 | 사용자가 저장소의 최상위 폴더를 선택했다. `scroll-capture` 폴더를 선택하는 단계를 안내했고, 사용자가 로드했다 |
+| 11 | 자동 업데이트 설정 | 예약 작업 `ScrollCapture-AutoUpdate`를 등록했다. 한 번 실행했고, 결과는 "변경 없음"이었다 |
 
-## 3. 지금 진행 중인 일
+## 3. 지금의 상태 (사용자의 PC)
 
-사용자는 git으로 설치하고 업데이트하는 방법을 선택했습니다. 이 작업은 사용자의 PC에서 수행해야 합니다.
-아직 수행하지 않았습니다.
+- 설치 폴더: `C:UserslimitOneDrive바탕 화면scroll-capture-repo` (git 복제. 사용자가 이 위치로 옮겼다).
+  Chrome에는 그 안의 `scroll-capture` 폴더를 로드했다.
+- 이 폴더는 OneDrive가 동기화하는 폴더이다. OneDrive가 파일을 잠그면 `git pull`이 실패할 수 있다.
+  문제가 있으면 `C:Userslimit` 아래로 옮긴다. 옮긴 후에는 `install.ps1`을 다시 실행하고, Chrome에서 다시 로드한다.
+- 예약 작업 `ScrollCapture-AutoUpdate`를 등록했다 (60분 간격).
+- 0.4.0의 변경은 이 폴더의 작업 파일에만 있다. 커밋과 푸시는 하지 않았다. 사용자가 요청하지 않았다.
+  원격 브랜치에 같은 파일을 바꾸는 커밋이 생기면 `git pull --ff-only`가 실패한다.
+  그래서 다음 작업은 0.4.0의 커밋과 푸시이다 (사용자의 승인이 필요하다).
 
-사용자의 PC에서 동작하는 세션이 수행할 작업:
+업데이트의 순서:
 
-1. git이 설치되어 있는지 확인한다. 없으면 설치 방법을 안내한다 (https://git-scm.com).
-2. 다음 명령을 실행한다. 저장소는 공개 상태이고, 로그인은 필요하지 않다.
+1. 개발 세션이 변경을 브랜치에 푸시한다. `manifest.json`의 `version`을 올린다.
+2. 예약 작업이 60분 안에 `git pull --ff-only`로 새 파일을 받는다.
+3. 확장 프로그램이 5분 안에 폴더의 버전을 읽고, 다시 로드한다. 측면 패널이 열려 있으면 알림을 보여준다.
 
-   ```bash
-   git clone -b claude/wizardly-cannon-esdvrm --single-branch https://github.com/timetraveltimetravel/-.git scroll-capture-repo
-   ```
+새 PC에 설치하는 순서:
 
-3. `scroll-capture-repo/scroll-capture` 폴더의 전체 경로를 사용자에게 알린다.
-4. 사용자가 `chrome://extensions`에서 그 폴더를 로드한다 ("개발자 모드" → "압축해제된 확장 프로그램을 로드합니다").
-   이 작업은 사용자가 해야 한다. Chrome은 이 작업을 프로그램에 허용하지 않는다.
-   이전에 압축 파일로 설치한 "스크롤 캡처"가 있으면 먼저 제거한다.
-
-업데이트할 때:
-
-```bash
-git -C scroll-capture-repo pull
-```
-
-그 다음에 사용자가 `chrome://extensions`에서 "스크롤 캡처" 카드의 새로고침 버튼을 누르고, 측면 패널을 닫고 다시 연다.
+1. `git clone -b claude/wizardly-cannon-esdvrm --single-branch https://github.com/timetraveltimetravel/-.git scroll-capture-repo`
+2. 사용자가 `chrome://extensions`에서 `scroll-capture-repo/scroll-capture` 폴더를 로드한다.
+   저장소의 최상위 폴더를 선택하면 Chrome이 "매니페스트 파일이 없거나 읽을 수 없습니다"를 보고한다.
+3. `powershell -ExecutionPolicy Bypass -File scroll-capture-reposcroll-captureauto-updateinstall.ps1`
 
 ## 4. 저장소
 
@@ -68,8 +69,10 @@ git -C scroll-capture-repo pull
 
 | 파일 | 역할 |
 | --- | --- |
-| `manifest.json` | Manifest V3. 권한: `activeTab`, `scripting`, `sidePanel`, `downloads`. WebAssembly를 허용하는 CSP |
-| `background.js` | 아이콘을 누르면 측면 패널을 연다 (`chrome.sidePanel.open`) |
+| `manifest.json` | Manifest V3. 권한: `activeTab`, `scripting`, `sidePanel`, `downloads`, `alarms`. WebAssembly를 허용하는 CSP |
+| `background.js` | 아이콘을 누르면 측면 패널을 연다 (`chrome.sidePanel.open`). 폴더의 버전을 확인하고, 다시 로드한다. ES 모듈이다 |
+| `update.js` | 자동 업데이트의 판단 (순수 함수) |
+| `auto-update/` | `pull.ps1` (git pull과 기록), `install.ps1`, `uninstall.ps1` (예약 작업의 등록과 제거) |
 | `content.js` | 페이지 스크립트. 스크롤 영역을 찾고, 위치를 읽고, 이동 경로를 재생하고, 고정 메뉴를 숨긴다 |
 | `sidepanel.html` / `.css` / `.js` | 측면 패널. 캡처, 사진 보관, 저장, 텍스트 변환을 제어한다 |
 | `stitch.js` | 이어 붙이기 계획의 계산 (순수 함수) |
@@ -144,6 +147,24 @@ git -C scroll-capture-repo pull
 - 파일 이름: `페이지 제목_날짜-시각_번호.png`. 시스템이 그 이름을 거부하면 `scroll-capture_...`를 사용한다.
 - TXT 파일의 첫 부분에 제목, 주소, 날짜를 기록한다.
 
+### 6.8 자동 업데이트 (`update.js`, `background.js`, `auto-update/`)
+
+- 압축해제된 확장 프로그램은 스스로 파일을 받을 수 없다. 그래서 파일을 받는 일은 Windows의 예약 작업이 한다.
+- `pull.ps1`: `git pull --ff-only --quiet`. 결과를 `auto-update/update.log`에 기록한다 (마지막 200줄. git은 이 파일을 무시한다).
+  git이 로그인 창을 열지 않게 한다 (`GIT_TERMINAL_PROMPT=0`).
+- `install.ps1`: 예약 작업을 등록한다. 실행 파일은 `conhost.exe --headless powershell.exe ... -File pull.ps1`이다 (창이 보이지 않는다).
+  시작 조건은 "한 번 + 60분마다 반복"이다. 로그온 시작 조건은 관리자 권한이 필요해서 사용하지 않는다.
+  인수: `-TaskName`, `-IntervalMinutes` (5~1440).
+- 확장 프로그램: `fetch(manifest.json, { cache: 'no-store' })`로 폴더의 버전을 읽는다. Chrome은 압축해제된 확장 프로그램의 파일을 매번 폴더에서 읽는다.
+- 판단 (`decide`): 버전이 같으면 `none`. 다르면 3초 후에 다시 읽는다. 두 값이 다르면 `wait` (git이 파일을 쓰는 중).
+  측면 패널이 열려 있으면 `notify`, 닫혀 있으면 `reload` (`chrome.runtime.reload()`).
+- 버전이 낮아진 때에도 다시 로드한다. 버전이 같은 변경은 다시 로드하지 않는다.
+- 확인하는 때: 서비스 워커의 시작, 알람 (`chrome.alarms`, 5분), 측면 패널이 열릴 때 (`sc-update-check`).
+- 측면 패널이 열려 있는지: `chrome.runtime.getContexts`에 `BACKGROUND`가 아닌 것이 있다.
+- 메시지: `sc-update-check` (패널 → 서비스 워커), `sc-update-available` (서비스 워커 → 패널).
+- `self.__scUpdate.check()`는 시험이 사용한다.
+- 확장 프로그램은 외부로 요청을 보내지 않는다. 사이트 권한을 추가하지 않았다.
+
 ## 7. 시험
 
 ```bash
@@ -158,12 +179,22 @@ node tests/e2e.mjs
 xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ```
 
-- 단위 시험 27개: `stitch`, `pace`, `ocr-tiles`.
-- 브라우저 시험 15개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota.
+- 단위 시험 39개: `stitch`, `pace`, `ocr-tiles`, `update`.
+- 브라우저 시험 17개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota, update, update-apply.
   이름의 일부로 선택할 수 있다 (예: `node tests/e2e.mjs natural ocr`). 전체 실행 시간은 약 5분이다.
 - 실제 사용 경로 시험 1개: 아이콘 누름과 같은 동작 → 측면 패널 → 캡처 → 저장. 배포하는 권한만 사용한다.
 
 ### 시험 환경의 주의 사항
+
+- 사용자의 PC (Windows 11)에서 Playwright의 Chromium (chromium-1255)은 시작하지 못했다 ("side-by-side configuration is incorrect"). 원인은 찾지 못했다.
+  그래서 Edge를 사용했다: `SC_CHANNEL=msedge`. Playwright는 저장소 밖의 폴더에 설치하고, `NODE_PATH`로 지정했다.
+- 이 환경(Windows, Edge)의 결과: 17개 중에서 15개 통과, 2개 실패. 실패한 2개는 0.3.0의 코드에서도 같은 값으로 실패한다. 0.4.0의 변경이 원인이 아니다.
+  - `manual`: 높이 3198, 기대 3205. Windows의 Edge에서 휠의 이동 거리가 시험의 값과 7픽셀 다르다. 원인은 조사하지 않았다.
+  - `filename`: Windows는 한글 파일 이름을 거부하지 않는다. 이 시험은 Linux의 C 로케일에서만 의미가 있다.
+- `realflow.mjs`는 Xvfb가 필요하다. Windows에서는 실행하지 않았다. 0.4.0에서는 이 시험을 실행하지 않았다.
+- `pull.ps1`과 `install.ps1`의 자동 시험은 없다. 임시 저장소(한글 경로)에서 손으로 시험했다:
+  변경 없음, 새 버전, 이 PC에서 바꾼 파일과의 충돌, git 저장소가 아닌 폴더, 예약 작업의 등록과 실행과 제거.
+- `*.ps1` 파일은 BOM이 있는 UTF-8이어야 한다. BOM이 없으면 Windows PowerShell 5.1이 한글을 잘못 읽는다. 단위 시험이 BOM을 확인한다.
 
 - 브라우저 시험은 도구 모음의 아이콘을 누를 수 없다. 그래서 시험용 복사본의 manifest에 `host_permissions: <all_urls>`를 추가한다.
   배포하는 manifest에는 이 권한이 없다.
@@ -205,10 +236,11 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ## 10. 아직 하지 않은 작업
 
 - 실제 웹사이트에서의 시험. 사용자가 자주 사용하는 사이트 3~5개를 아직 받지 못했다.
-- git으로 설치하는 작업 (3절).
+- 0.4.0의 커밋과 푸시 (3절).
+- Linux에서 `realflow.mjs`의 실행 (0.4.0).
 - 기획서의 구조 그림은 구성 요소 5개를 보여준다. 텍스트 변환 모듈은 그림에 없다.
 - 기획서의 "나중" 항목: PDF 저장, 캡처 영역 선택, 클립보드에 사진 복사, 사이트별 규칙.
-- Chrome 웹 스토어 등록 (자동 업데이트에 필요하다. 개발자 계정과 등록 비용이 필요하다).
+- Chrome 웹 스토어 등록 (git과 예약 작업이 없는 자동 업데이트에 필요하다. 개발자 계정과 등록 비용이 필요하다).
 - 기본 브랜치로의 병합 또는 풀 리퀘스트.
 
 ## 11. 알려진 제한
@@ -223,13 +255,14 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ## 12. 작업의 규칙
 
 - 버전을 올릴 때: `manifest.json`의 `version`, `README.md`의 버전, 필요하면 기획서.
+- 확장 프로그램의 파일을 바꾸면 `version`을 반드시 올린다. 자동 업데이트는 버전이 바뀐 때에만 다시 로드한다.
 - 기능을 바꾸면 시험을 추가하고, 세 가지 시험을 모두 실행한다.
 - 기획서는 claude.ai의 문서 "스크롤 캡처 프로그램 기획서"이다. 이 저장소에는 없다. 링크는 사용자에게 요청한다.
 - 문서와 사용자에게 보내는 글의 문체: 짧은 문장, 능동태, 한 문장에 한 가지 내용, 같은 것에는 같은 낱말 (ASD-STE100의 원칙).
-- 설치용 압축 파일을 만드는 명령 (저장소의 최상위 폴더에서 실행. `tests/`는 제외한다):
+- 설치용 압축 파일을 만드는 명령 (저장소의 최상위 폴더에서 실행. `tests/`와 `auto-update/`는 제외한다):
 
   ```bash
-  zip -q -r scroll-capture-0.3.0.zip scroll-capture -x 'scroll-capture/tests/*'
+  zip -q -r scroll-capture-0.4.0.zip scroll-capture -x 'scroll-capture/tests/*' 'scroll-capture/auto-update/*'
   ```
 
 - OCR 엔진을 다시 받는 방법: `npm install tesseract.js @tesseract.js-data/kor @tesseract.js-data/eng`.

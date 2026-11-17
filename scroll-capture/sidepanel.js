@@ -33,6 +33,10 @@ const ui = {
   ocrActions: $('ocrActions'),
   ocrSave: $('ocrSave'),
   ocrCopy: $('ocrCopy'),
+  update: $('update'),
+  updateText: $('updateText'),
+  updateApply: $('updateApply'),
+  version: $('version'),
 };
 
 const state = {
@@ -82,6 +86,7 @@ function render() {
   ui.ocr.disabled = !has || state.saving;
   ui.ocr.textContent = state.ocr ? '변환 정지' : '텍스트 변환';
   ui.ocrSave.disabled = busy;
+  ui.updateApply.disabled = busy;
 }
 
 // 캡처 대상 탭을 찾는다. 주소의 tabId 값은 시험에서만 사용한다.
@@ -522,6 +527,23 @@ async function copyText() {
   ui.ocrStatus.textContent = '텍스트를 클립보드에 복사했습니다.';
 }
 
+// ---------- 자동 업데이트 ----------
+
+// 폴더에 새 버전이 있다. 측면 패널이 열려 있는 동안에는 프로그램이 새 버전을 자동으로 적용하지 않는다.
+function showUpdate(version) {
+  ui.updateText.textContent =
+    `새 버전이 있습니다 (${version}). 측면 패널을 닫으면 프로그램이 새 버전을 자동으로 적용합니다. ` +
+    '"지금 적용"을 누르면 측면 패널이 닫히고, 캡처한 사진이 없어집니다. 사진을 먼저 저장하십시오.';
+  ui.update.hidden = false;
+}
+
+// 확장 프로그램을 다시 로드한다. 측면 패널이 닫힌다.
+async function applyUpdate() {
+  if (state.saving || state.ocr) return;
+  if (state.capturing) await stop();
+  chrome.runtime.reload();
+}
+
 // ---------- 이벤트 ----------
 
 ui.toggle.addEventListener('click', async () => {
@@ -550,9 +572,14 @@ ui.reset.addEventListener('click', reset);
 ui.ocr.addEventListener('click', convertText);
 ui.ocrSave.addEventListener('click', saveText);
 ui.ocrCopy.addEventListener('click', copyText);
+ui.updateApply.addEventListener('click', applyUpdate);
 
 // 수동 스크롤: 스크롤이 멈추면 페이지 스크립트가 이 메시지를 보낸다.
 chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type === 'sc-update-available') {
+    showUpdate(msg.version);
+    return;
+  }
   if (msg?.type !== 'sc-scroll-idle') return;
   if (!state.capturing || state.auto) return;
   if (sender.tab?.id !== state.tabId) return;
@@ -563,5 +590,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId === state.tabId && state.capturing) stop('탭을 닫았습니다. 캡처를 정지했습니다.');
 });
+
+ui.version.textContent = `버전 ${chrome.runtime.getManifest().version}`;
+// 폴더에 새 버전이 있는지 확인한다. 새 버전이 있으면 background.js가 sc-update-available을 보낸다.
+chrome.runtime.sendMessage({ type: 'sc-update-check' }).catch(() => {});
 
 render();
