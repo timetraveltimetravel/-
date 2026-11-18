@@ -4,7 +4,7 @@
 이 문서는 대화의 원문이 아닙니다. 대화에서 한 요청, 결정, 작업, 측정 값을 정리한 것입니다.
 
 - 작성일: 2026-11-16 (2026-11-17에 0.4.0의 내용을 추가)
-- 현재 버전: 0.5.0
+- 현재 버전: 0.6.0
 - 브랜치: `claude/wizardly-cannon-esdvrm`
 - 사용 설명서: 같은 폴더의 `README.md`
 
@@ -15,6 +15,7 @@
 
 0.4.0은 자동 업데이트를 추가한 버전입니다. 사용자의 PC에 설치했고, 예약 작업을 등록했습니다.
 0.5.0은 여러 페이지의 캡처를 추가한 버전입니다: 자동 스크롤이 끝나면 지정한 영역을 누르고, 다음 페이지에서 계속합니다.
+0.6.0은 일시정지와 즉시 정지, 텍스트 저장 (사진 대신, 또는 함께), 저장 폴더 (순서 번호)를 추가한 버전입니다.
 0.4.0은 커밋하고 브랜치에 푸시했습니다. 실제 웹사이트에서는 아직 시험하지 않았습니다.
 
 ## 2. 요청의 기록 (시간 순서)
@@ -34,6 +35,8 @@
 | 11 | 자동 업데이트 설정 | 예약 작업 `ScrollCapture-AutoUpdate`를 등록했다. 한 번 실행했고, 결과는 "변경 없음"이었다 |
 | 12 | 0.4.0을 GitHub에 올리기 | 커밋 `6b3affd`를 브랜치에 푸시했다 |
 | 13 | 여러 페이지를 자동 스크롤하고 싶다. 한 페이지의 스크롤이 끝나면 지정한 영역을 누르는 기능 | 0.5.0: 넘기는 영역의 지정, 페이지마다 저장, 누르기, 새 페이지 기다리기 |
+| 14 | 0.5.0을 올려서 설치 | 커밋 `4a5383d`를 푸시했다. 예약 작업을 바로 실행했다. 사용자가 업데이트를 확인했다 (GitHub를 거친 첫 자동 업데이트) |
+| 15 | 1. 중간에 자동 스크롤을 멈추는 버튼 2. 사진이 아니라 텍스트를 저장하는 기능 3. 폴더를 지정하면 그 폴더에 차곡차곡 쌓이는 기능 | 0.6.0: 일시정지/계속, 즉시 정지, "저장할 것", 저장 폴더와 순서 번호 |
 
 ## 3. 지금의 상태 (사용자의 PC)
 
@@ -80,6 +83,7 @@
 | `background.js` | 아이콘을 누르면 측면 패널을 연다 (`chrome.sidePanel.open`). 폴더의 버전을 확인하고, 다시 로드한다. ES 모듈이다 |
 | `update.js` | 자동 업데이트의 판단 (순수 함수) |
 | `pages.js` | 여러 페이지 캡처의 판단 (순수 함수) |
+| `folder.js` | 저장 폴더: 선택 (`showDirectoryPicker`), 기억 (IndexedDB), 권한, 순서 번호, 파일 쓰기 |
 | `auto-update/` | `pull.ps1` (git pull과 기록), `install.ps1`, `uninstall.ps1` (예약 작업의 등록과 제거) |
 | `content.js` | 페이지 스크립트. 스크롤 영역을 찾고, 위치를 읽고, 이동 경로를 재생하고, 고정 메뉴를 숨긴다 |
 | `sidepanel.html` / `.css` / `.js` | 측면 패널. 캡처, 사진 보관, 저장, 텍스트 변환을 제어한다 |
@@ -202,6 +206,43 @@
 - 권한을 추가하지 않았다. `activeTab`은 같은 사이트 안의 이동에서 유지된다. 다른 사이트로 이동하면 없어진다.
   시험은 이것을 확인하지 못한다. 시험용 복사본에는 모든 사이트 권한이 있다 (7절).
 
+### 6.10 일시정지와 정지 (0.6.0)
+
+- 사용자의 요청: "중간에 자동 스크롤 멈추기 버튼". 0.5.0에도 "자동 스크롤 정지" 버튼이 있었다.
+  그러나 진행 중인 이동 경로와 대기 시간(최대 약 3.5초)이 끝날 때까지 화면이 계속 움직였다. 페이지를 넘기는 중에는 그 버튼을 누를 수 없었다.
+  그래서 일시정지/계속과 즉시 정지를 만들었다. 이 해석은 개발 세션의 판단이다.
+- `state.run`: `autoRun`이 진행 중이다 (여러 페이지를 포함한다). `state.paused`: 일시정지.
+- 자동 스크롤 중의 버튼: "자동 스크롤" → "일시정지"/"계속" (`togglePause`), "캡처 시작" → "정지" (`stopRun`).
+- 즉시 멈춤: 패널이 `sc-halt` (`session`, `upTo`)를 보낸다. 페이지 스크립트는 번호가 `upTo` 이하인 이동 경로를 다음 화면 그리기에서 멈춘다.
+  `sc-scroll-path`에는 `session` (패널의 번호)과 `seq` (경로의 번호)가 있다. 그래서 halt 다음에 도착한 이전 경로도 재생하지 않는다.
+  `session`이 있는 이유: 패널을 다시 열면 `seq`가 0부터 다시 시작한다.
+- 대기 시간은 `rest(ms)`이다. 일시정지, 정지에서 50ms 안에 끝난다. 넘긴 후에 기다리는 시간도 정지에서 바로 끝난다.
+- 일시정지 중에는 `sc-scroll-idle`이 캡처한다 (사용자의 스크롤). 계속하면 `autoScroll`의 frontier 계산이 그 사진을 사용한다.
+- 여러 페이지: `turnPage`는 저장한 후에 `waitWhilePaused`를 실행한다. 일시정지 중에는 다음 페이지로 넘기지 않는다.
+- `state.cancelTurn`은 이제 "자동 스크롤의 정지를 요청했다"이다. `autoRun`의 시작에서만 false로 바꾼다.
+- 정지의 결과 글: 한 페이지 "정지했습니다.", 여러 페이지 "페이지 N개를 저장했습니다. 정지했습니다. 지금 페이지는 아직 저장하지 않았습니다."
+
+### 6.11 저장할 것 (0.6.0)
+
+- "저장할 것": `image`, `text`, `both` (`input[name="content"]`). "저장" 버튼과 여러 페이지의 자동 저장에 적용한다.
+- 텍스트는 OCR이다 (`recognizeCaptures`). `convertText`와 `save`가 이 함수를 사용한다.
+  여러 페이지에서는 엔진을 종료하지 않는다 (`keepEngine`). `autoRun`이 끝날 때 종료한다.
+- 사진과 텍스트의 파일 이름은 확장자만 다르다. `saveTarget()`이 시각(`stamp`)과 순서 번호를 한 번만 정한다.
+- 저장 중의 변환은 "변환 정지" 버튼으로 정지할 수 있다. 그때 텍스트 파일은 저장하지 않는다.
+- 페이지의 글자를 직접 읽는 방식 (DOM)은 만들지 않았다. 9절의 "결정한 사항"을 보십시오. 사용자에게 다시 제안했다.
+
+### 6.12 저장 폴더 (0.6.0)
+
+- `showDirectoryPicker({ id: 'scroll-capture', mode: 'readwrite' })`. 핸들은 IndexedDB (`scroll-capture` / `settings` / `folder`)에 기억한다.
+- 권한: 측면 패널을 열 때 `queryPermission`. 사용자가 "저장", "TXT 저장", 여러 페이지의 "자동 스크롤"을 누르면 `requestPermission`.
+  `requestPermission`은 사용자의 누름 직후에만 동작한다. 그래서 `save({ askFolder: true })`는 `saving`을 true로 바꾼 직후에 권한을 묻는다.
+  권한이 없으면 "다운로드" 폴더에 저장하고, 경고를 보여준다.
+- 순서 번호: 폴더의 파일 이름에서 `/^(\d{4,})_/`의 가장 큰 값 + 1. 4자리 (`0001_`). 사진과 텍스트는 같은 번호이다.
+- 같은 이름이 있으면 ` (2)`, ` (3)`을 붙인다. 덮어쓰지 않는다.
+- 시험은 폴더 선택 창을 사용할 수 없다. `window.showDirectoryPicker`를 OPFS (`navigator.storage.getDirectory()`)의 폴더로 바꾼다.
+  실제 측면 패널에서 폴더 선택 창과 권한 창이 동작하는지는 시험하지 않았다. 사용자의 확인이 필요하다.
+- `chrome.downloads`의 하위 폴더 방식 ("다운로드/폴더 이름/")은 만들지 않았다. 선택 창이 동작하지 않으면 이 방식이 대안이다.
+
 ## 7. 시험
 
 ```bash
@@ -216,9 +257,10 @@ node tests/e2e.mjs
 xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ```
 
-- 단위 시험 44개: `stitch`, `pace`, `ocr-tiles`, `update`, `pages`.
-- 브라우저 시험 23개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota, update, update-apply,
-  pages, pages-limit, pages-spa, pages-point, pages-loop, pages-stop.
+- 단위 시험 48개: `stitch`, `pace`, `ocr-tiles`, `update`, `pages`, `folder`.
+- 브라우저 시험 30개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota, update, update-apply,
+  pages, pages-limit, pages-spa, pages-point, pages-loop, pages-stop,
+  pause, stop-now, pause-pages, save-text, pages-text, folder, folder-pages.
   이름의 일부로 선택할 수 있다 (예: `node tests/e2e.mjs natural ocr`). 전체 실행 시간은 약 5분이다.
 - 실제 사용 경로 시험 1개: 아이콘 누름과 같은 동작 → 측면 패널 → 캡처 → 저장. 배포하는 권한만 사용한다.
 
@@ -226,7 +268,7 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 
 - 사용자의 PC (Windows 11)에서 Playwright의 Chromium (chromium-1255)은 시작하지 못했다 ("side-by-side configuration is incorrect"). 원인은 찾지 못했다.
   그래서 Edge를 사용했다: `SC_CHANNEL=msedge`. Playwright는 저장소 밖의 폴더에 설치하고, `NODE_PATH`로 지정했다.
-- 이 환경(Windows, Edge)의 결과: 23개 중에서 21개 통과, 2개 실패. 실패한 2개는 0.3.0의 코드에서도 같은 값으로 실패한다. 0.4.0의 변경이 원인이 아니다.
+- 이 환경(Windows, Edge)의 결과 (0.6.0): 30개 중에서 28개 통과, 2개 실패. 실패한 2개는 0.3.0의 코드에서도 같은 값으로 실패한다. 0.4.0의 변경이 원인이 아니다.
   - `manual`: 높이 3198, 기대 3205. Windows의 Edge에서 휠의 이동 거리가 시험의 값과 7픽셀 다르다. 원인은 조사하지 않았다.
   - `filename`: Windows는 한글 파일 이름을 거부하지 않는다. 이 시험은 Linux의 C 로케일에서만 의미가 있다.
 - 0.5.0의 전체 실행에서 `quota`가 한 번 실패했다 (`waitIdle`의 180초 시간 초과). 그 시험만 다시 3번 실행했고, 3번 모두 통과했다. 원인은 찾지 못했다.
@@ -276,7 +318,8 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 
 - 실제 웹사이트에서의 시험. 사용자가 자주 사용하는 사이트 3~5개를 아직 받지 못했다.
   여러 페이지의 기능은 시험 페이지에서만 확인했다. 실제 사이트의 "다음" 버튼과 캡처 권한의 유지는 확인하지 않았다.
-- 여러 페이지에서 페이지마다 텍스트 변환을 수행하는 기능. 사용자에게 제안했고, 사용자는 아직 답하지 않았다.
+- 실제 측면 패널에서 폴더 선택 창과 권한 창의 확인 (0.6.0). 사용자에게 확인을 요청했다.
+- 페이지의 글자를 직접 읽는 텍스트 방식 (DOM). 오류가 없고 빠르다. 사용자에게 제안했고, 사용자는 아직 답하지 않았다.
 - 지정한 영역을 사이트별로 저장하는 기능 (`storage` 권한이 필요하다).
 - Linux에서 `realflow.mjs`의 실행 (0.4.0).
 - 기획서의 구조 그림은 구성 요소 5개를 보여준다. 텍스트 변환 모듈은 그림에 없다.
@@ -298,6 +341,8 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 - 여러 페이지: 버튼의 글자가 페이지마다 완전히 다르면 그 버튼을 찾지 못한다. Shadow DOM 안의 버튼도 찾지 못한다.
 - 여러 페이지: 글자가 없는 버튼은 `className`으로 찾는다. "이전"과 "다음"의 `className`이 같으면 다른 버튼을 누를 수 있다.
 - 여러 페이지: 주소가 바뀌지 않는 사이트에서는 이미 캡처한 페이지를 판단하지 못한다. 최대 페이지 수가 반복을 끝낸다.
+- 저장 폴더: Chrome은 일부 폴더(바탕 화면, 문서 폴더 자체 등)의 선택을 막을 수 있다. 브라우저를 다시 시작하면 권한을 다시 물을 수 있다.
+- 저장 폴더: 순서 번호는 폴더의 파일 이름으로 계산한다. 사용자가 번호가 있는 파일을 지우면 그 번호를 다시 사용할 수 있다.
 
 ## 12. 작업의 규칙
 

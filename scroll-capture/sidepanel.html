@@ -82,6 +82,15 @@
   </section>
 
   <section class="save">
+    <h2>저장</h2>
+    <fieldset>
+      <legend>저장할 것</legend>
+      <label><input type="radio" name="content" value="image" checked> 사진</label>
+      <label><input type="radio" name="content" value="text"> 텍스트</label>
+      <label><input type="radio" name="content" value="both"> 사진과 텍스트</label>
+    </fieldset>
+    <p class="hint small">텍스트: 프로그램이 사진 안의 글자를 인식해서 TXT 파일을 만듭니다. 페이지 1,000 픽셀에 약 3초가 걸립니다.</p>
+    <fieldset id="imageOptions" class="group">
     <fieldset>
       <legend>형식</legend>
       <label><input type="radio" name="format" value="png" checked> PNG</label>
@@ -92,8 +101,21 @@
       <label><input type="radio" name="mode" value="long" checked> 긴 사진 한 장</label>
       <label><input type="radio" name="mode" value="each"> 화면별 여러 장</label>
     </fieldset>
+    </fieldset>
+    <div class="folder">
+      <p class="hint">저장 위치: <strong id="folderName">"다운로드" 폴더</strong></p>
+      <p id="folderNote" class="hint warn"></p>
+      <div class="controls">
+        <button id="folderPick" type="button">폴더 선택</button>
+        <button id="folderClear" type="button" disabled>다운로드 폴더 사용</button>
+      </div>
+      <label class="check">
+        <input id="sequence" type="checkbox" checked disabled>
+        <span>파일 이름 앞에 순서 번호 붙이기 (0001_, 0002_ …)</span>
+      </label>
+    </div>
     <div class="controls">
-      <button id="save" class="primary" type="button" disabled>사진 저장</button>
+      <button id="save" class="primary" type="button" disabled>저장</button>
       <button id="reset" type="button" disabled>초기화</button>
     </div>
   </section>

@@ -8,6 +8,8 @@
     hidden: [], // [요소, 원래 visibility 값, 원래 우선순위]
     timer: null,
     listening: false,
+    // 정지한 이동 경로: 측면 패널의 번호(session)와 경로의 번호(seq). 이 번호 이하의 경로는 재생하지 않는다.
+    halted: { session: '', upTo: 0 },
   };
 
   const docScroller = () => document.scrollingElement || document.documentElement;
@@ -144,8 +146,11 @@
       setTimeout(finish, 100);
     });
 
+  const isHalted = (session, seq) => state.halted.session === session && seq <= state.halted.upTo;
+
   // 이동 경로를 따라서 스크롤한다. path: [[시간(ms), 이동한 거리(px)], ...]
-  async function scrollPath(path) {
+  // 측면 패널이 sc-halt를 보내면 지금 위치에서 바로 멈춘다 (일시정지, 정지).
+  async function scrollPath(path, session = '', seq = 0) {
     const { read, to } = scrollTarget();
     const start = read();
     const startedAt = performance.now();
@@ -153,6 +158,7 @@
     let i = 1;
     for (;;) {
       await nextFrame();
+      if (isHalted(session, seq)) return;
       const t = performance.now() - startedAt;
       if (t >= last[0]) break;
       while (i < path.length - 1 && path[i][0] <= t) i += 1;
@@ -405,12 +411,16 @@
         return metrics();
       }
       case 'sc-scroll-path':
-        await scrollPath(msg.path);
+        if (!isHalted(msg.session, msg.seq)) await scrollPath(msg.path, msg.session, msg.seq);
         await afterPaint();
         return metrics();
       case 'sc-hide-fixed':
         hideFixed(msg.mode);
         await afterPaint();
+        return metrics();
+      case 'sc-halt':
+        if (state.halted.session !== msg.session) state.halted = { session: msg.session, upTo: 0 };
+        state.halted.upTo = Math.max(state.halted.upTo, msg.upTo);
         return metrics();
       case 'sc-stop':
         listen(false);

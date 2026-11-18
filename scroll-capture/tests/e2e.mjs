@@ -793,6 +793,226 @@ test('pages-stop: 페이지를 넘기는 중에 "정지"를 누르면 끝낸다'
   return result.message;
 });
 
+// ---------- 일시정지, 정지, 저장할 것, 저장 폴더 ----------
+
+const scrollYOf = (page) => page.evaluate(() => scrollY);
+const waitRunEnd = (panel, timeout = 180_000) =>
+  panel.waitForFunction(() => !window.__scDebug.run && !window.__scDebug.capturing, null, { timeout });
+
+// 마지막으로 저장한 파일. 텍스트 파일은 내용도 읽는다.
+const lastFiles = (panel) =>
+  panel.evaluate(async () => {
+    const out = [];
+    for (const { filename, blob, folder } of window.__scDebug.lastSaved) {
+      out.push({ filename, folder, type: blob.type, body: blob.type.startsWith('text/') ? await blob.text() : '' });
+    }
+    return out;
+  });
+const clickSave = async (panel) => {
+  await panel.click('#save');
+  await panel.waitForFunction(() => !window.__scDebug.saving && window.__scDebug.lastSaved.length > 0, null, { timeout: 120_000 });
+  return lastFiles(panel);
+};
+
+test('pause: 일시정지하면 바로 멈추고, "계속"을 누르면 이어서 캡처한다', async (browser, base) => {
+  const rows = 100;
+  const { page, panel } = await open(browser, `${base}/plain?rows=${rows}`);
+  await panel.selectOption('#speed', 'random');
+  await panel.click('#auto');
+  await panel.waitForFunction(() => window.__scDebug.captures.length >= 3, null, { timeout: 60_000, polling: 50 });
+  await panel.click('#auto'); // 일시정지
+  assert((await panel.textContent('#auto')) === '계속', `버튼 ${await panel.textContent('#auto')}`);
+  assert((await panel.textContent('#state')) === '일시정지', `상태 ${await panel.textContent('#state')}`);
+  // 진행 중인 이동은 바로 멈춘다. 이동 한 번은 보통 1~3초이다.
+  await page.waitForTimeout(300);
+  const y1 = await scrollYOf(page);
+  await page.waitForTimeout(2500);
+  const y2 = await scrollYOf(page);
+  assert(y1 === y2, `일시정지 중에 화면이 움직였다: ${y1} → ${y2}`);
+  assert(await panel.evaluate(() => window.__scDebug.run && window.__scDebug.capturing), '일시정지 중에 캡처를 끝냈다');
+
+  // 계속: 빠른 속도로 바꾸고 끝까지 캡처한다. 결과 사진에 빈 곳이 없어야 한다.
+  await panel.selectOption('#speed', 'fast');
+  await panel.click('#auto');
+  assert((await panel.textContent('#auto')) === '일시정지', '계속한 후의 버튼');
+  await waitRunEnd(panel);
+  const files = await save(panel);
+  const docHeight = HEADER + rows * ROW;
+  assert(files[0].height === docHeight, `높이 ${files[0].height}, 기대 ${docHeight}`);
+  const col = await checkColumn(panel, { x: 100, scale: 1, header: HEADER, rows });
+  assert(col.bad === 0, `색이 다른 픽셀 ${col.bad}개 ${JSON.stringify(col.samples)}`);
+  assert((await panel.textContent('#gaps')) === '0개', `누락 영역 ${await panel.textContent('#gaps')}`);
+  return `${y1}px에서 일시정지, 2.5초 동안 움직이지 않았다. 계속한 후 사진 ${await captureCount(panel)}장 → ${files[0].height}px`;
+});
+
+test('stop-now: "정지"를 누르면 스크롤이 바로 멈추고, 사진은 남는다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/plain?rows=100`);
+  await panel.selectOption('#speed', 'random');
+  await panel.click('#auto');
+  await panel.waitForFunction(() => window.__scDebug.captures.length >= 3, null, { timeout: 60_000, polling: 50 });
+  await panel.click('#toggle'); // 정지
+  await waitRunEnd(panel, 10_000);
+  const y1 = await scrollYOf(page);
+  await page.waitForTimeout(2000);
+  const y2 = await scrollYOf(page);
+  assert(y1 === y2, `정지한 후에 화면이 움직였다: ${y1} → ${y2}`);
+  const message = await panel.textContent('#message');
+  assert(message === '정지했습니다.', message);
+  assert((await panel.textContent('#toggle')) === '캡처 시작' && (await panel.textContent('#auto')) === '자동 스크롤', '정지한 후의 버튼');
+  assert(!(await panel.isDisabled('#save')), '정지한 후에 "저장"을 누를 수 없다');
+  return `${y1}px에서 정지, 사진 ${await captureCount(panel)}장이 남았다`;
+});
+
+test('pause-pages: 여러 페이지의 중간에 일시정지하고 계속한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/book?p=1&last=3`);
+  await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  await panel.fill('#turnWait', '0.5');
+  await panel.selectOption('#speed', 'slow');
+  await panel.click('#auto');
+  await panel.waitForFunction(
+    () => {
+      const s = window.__scDebug;
+      return s.pages.length === 1 && s.auto && !s.turning;
+    },
+    null,
+    { timeout: 60_000, polling: 50 },
+  );
+  await panel.click('#auto'); // 일시정지 (2쪽)
+  await page.waitForTimeout(4000);
+  const during = await debug(panel);
+  assert(during.pages.length === 1 && page.url().includes('p=2'), `일시정지 중에 진행했다: 페이지 ${during.pages.length}개, ${page.url()}`);
+  assert((await panel.textContent('#state')) === '일시정지', await panel.textContent('#state'));
+  await panel.selectOption('#speed', 'fast');
+  await panel.click('#auto'); // 계속
+  await waitRunEnd(panel);
+  const result = await debug(panel);
+  assert(pageNumbers(result) === '1,2,3', `저장한 페이지 ${pageNumbers(result)}`);
+  assertFullPages(result);
+  return result.message;
+});
+
+pages['/novel'] = (q) => {
+  const p = Number(q.get('p') || 1);
+  const last = Number(q.get('last') || 2);
+  const next = p < last ? `<a class="next" href="/novel?p=${p + 1}&last=${last}">다음 화</a>` : '';
+  const body = Array.from({ length: 5 }, (_, i) => `<p>${SENTENCES.slice((i + p) % 4, ((i + p) % 4) + 3).join(' ')}</p>`).join('');
+  return `<!doctype html><title>소설 ${p}화</title><style>
+      body { margin: 0; font: 16px/1.7 sans-serif; color: #222; }
+      main { max-width: 720px; margin: 0 auto; padding: 8px 24px 40px; }
+      .next { display: inline-block; margin-top: 16px; padding: 8px 16px; border: 1px solid #222; color: #222; }
+    </style><main><h1>${p}화</h1>${body}${next}</main>`;
+};
+
+test('save-text: 사진 대신 텍스트를 저장하고, 사진과 텍스트를 함께 저장할 수도 있다', async (browser, base) => {
+  const { panel } = await open(browser, `${base}/text`);
+  await runAuto(panel);
+  await panel.check('input[name="content"][value="text"]');
+  assert(await panel.isDisabled('input[name="format"][value="png"]'), '텍스트만 저장하는데 사진의 형식을 선택할 수 있다');
+  const textOnly = await clickSave(panel);
+  assert(textOnly.length === 1 && textOnly[0].filename.endsWith('.txt'), `파일 ${textOnly.map((f) => f.filename)}`);
+  assert(textOnly[0].body.startsWith('제목: 긴 기사 예시\n'), textOnly[0].body.slice(0, 40));
+  assert(textOnly[0].body.includes('스크롤 캡처는 화면을 순서대로 저장하는 프로그램입니다.'), '텍스트에 문장이 없다');
+  const message = await panel.textContent('#message');
+  assert(message === '텍스트 파일 1개를 "다운로드" 폴더에 저장했습니다.', message);
+
+  await panel.check('input[name="content"][value="both"]');
+  const both = await clickSave(panel);
+  const names = both.map((f) => f.filename);
+  assert(both.length === 2 && names[0].endsWith('_01.png') && names[1].endsWith('.txt'), `파일 ${names}`);
+  assert(names[0].replace(/_01\.png$/, '') === names[1].replace(/\.txt$/, ''), `사진과 텍스트의 파일 이름이 다르다: ${names}`);
+  return `텍스트만: ${textOnly[0].filename}. 둘 다: ${names.join(', ')}`;
+});
+
+test('pages-text: 여러 페이지에서 페이지마다 텍스트 파일을 저장한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/novel?p=1&last=2`);
+  await pickTarget(panel, () => page.locator('a.next').click());
+  await panel.check('input[name="content"][value="text"]');
+  const result = await runPages(panel);
+  const titles = result.pages.map((p) => p.title).join(',');
+  assert(titles === '소설 1화,소설 2화', `저장한 페이지 ${titles}`);
+  const files = result.pages.flatMap((p) => p.files);
+  assert(files.length === 2 && files.every((f) => f.endsWith('.txt')), `파일 ${files}`);
+  const [last] = await lastFiles(panel);
+  assert(last.body.startsWith('제목: 소설 2화\n'), last.body.slice(0, 40));
+  assert(SENTENCES.slice(0, 4).some((s) => last.body.includes(s)), '2화의 텍스트에 문장이 없다');
+  return `${files.join(', ')}. ${result.message}`;
+});
+
+// 폴더 선택 창은 시험에서 사용할 수 없다. 그래서 브라우저 안의 저장소(OPFS)의 폴더를 선택한 것으로 바꾼다.
+const stubPicker = (panel, name) =>
+  panel.evaluate(async (folder) => {
+    const root = await navigator.storage.getDirectory();
+    window.showDirectoryPicker = async () => root.getDirectoryHandle(folder, { create: true });
+  }, name);
+const folderFiles = (panel, name) =>
+  panel.evaluate(async (folder) => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(folder);
+    const out = [];
+    for await (const [n, h] of dir.entries()) if (h.kind === 'file') out.push(n);
+    return out.sort();
+  }, name);
+const chooseFolder = async (panel, name) => {
+  await stubPicker(panel, name);
+  await panel.click('#folderPick');
+  await panel.waitForFunction((n) => window.__scDebug.folder?.name === n, name, { timeout: 10_000 });
+};
+
+test('folder: 선택한 폴더에 순서 번호를 붙여서 차례로 저장하고, 폴더를 기억한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/plain?rows=20`);
+  // 폴더에 이미 7번 파일이 있다.
+  await panel.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('캡처 모음', { create: true });
+    const writable = await (await dir.getFileHandle('0007_이전 파일.txt', { create: true })).createWritable();
+    await writable.write('x');
+    await writable.close();
+  });
+  assert(await panel.isDisabled('#sequence'), '"다운로드" 폴더에서 순서 번호를 선택할 수 있다');
+  await chooseFolder(panel, '캡처 모음');
+  assert((await panel.textContent('#folderName')).includes('"캡처 모음"'), await panel.textContent('#folderName'));
+  assert(!(await panel.isDisabled('#sequence')), '순서 번호를 선택할 수 없다');
+
+  await runAuto(panel);
+  const first = await clickSave(panel);
+  assert(/^0008_일반 페이지 시험 1_\d{8}-\d{6}_01\.png$/.test(first[0].filename), `파일 이름 ${first[0].filename}`);
+  assert(first[0].folder === '캡처 모음', `폴더 ${first[0].folder}`);
+  const message = await panel.textContent('#message');
+  assert(message === '사진 1장을 "캡처 모음" 폴더에 저장했습니다.', message);
+  const second = await clickSave(panel);
+  assert(second[0].filename.startsWith('0009_'), `두 번째 파일 ${second[0].filename}`);
+  await panel.uncheck('#sequence');
+  const third = await clickSave(panel);
+  assert(/^일반 페이지 시험 1_/.test(third[0].filename), `번호가 없는 파일 ${third[0].filename}`);
+  const names = await folderFiles(panel, '캡처 모음');
+  const expected = ['0007_이전 파일.txt', first[0].filename, second[0].filename, third[0].filename].sort();
+  assert(JSON.stringify(names) === JSON.stringify(expected), `폴더의 파일 ${names}`);
+
+  // 측면 패널을 다시 열어도 폴더를 기억한다.
+  await panel.reload();
+  await panel.waitForFunction(() => window.__scDebug.folder?.name === '캡처 모음', null, { timeout: 10_000 });
+  assert((await panel.textContent('#folderName')).includes('"캡처 모음"'), '다시 연 후의 저장 위치');
+  await panel.click('#folderClear');
+  assert((await panel.textContent('#folderName')) === '"다운로드" 폴더', await panel.textContent('#folderName'));
+  await panel.waitForTimeout(300); // 기억을 지우는 것을 기다린다
+  await panel.reload();
+  await panel.waitForSelector('#toggle');
+  await page.waitForTimeout(500);
+  assert(await panel.evaluate(() => window.__scDebug.folder === null), '"다운로드 폴더 사용"을 누른 후에도 폴더를 기억한다');
+  return `폴더의 파일: ${names.join(', ')}`;
+});
+
+test('folder-pages: 여러 페이지를 선택한 폴더에 0001, 0002, 0003 순서로 저장한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/book?p=1&last=3`);
+  await chooseFolder(panel, '책');
+  await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  const result = await runPages(panel);
+  const names = await folderFiles(panel, '책');
+  assert(names.length === 3 && names.every((n, i) => n.startsWith(`000${i + 1}_책 ${i + 1}쪽_`)), `폴더의 파일 ${names}`);
+  assert(result.message.startsWith('페이지 3개를 저장했습니다.'), result.message);
+  return names.join(', ');
+});
+
 // ---------- 실행 ----------
 
 const server = await startServer();

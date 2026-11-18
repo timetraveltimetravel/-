@@ -57,6 +57,7 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
 }
 .state[data-state="capturing"] { border-color: var(--ok); color: var(--ok); }
 .state[data-state="auto"], .state[data-state="turning"] { border-color: var(--accent); color: var(--accent); }
+.state[data-state="paused"] { border-color: var(--warn); color: var(--warn); }
 
 section { margin-bottom: 16px; }
 
@@ -161,3 +162,12 @@ textarea {
 .pages { display: grid; gap: 8px; }
 .pages h2 { margin: 0; }
 .hint { margin: 0; color: var(--muted); }
+.hint.small { margin: -4px 0 8px; font-size: 12px; }
+.hint.warn { color: var(--warn); }
+.hint:empty { display: none; }
+
+fieldset.group { display: block; margin: 0; }
+fieldset.group:disabled { opacity: 0.45; }
+.folder { display: grid; gap: 6px; margin: 4px 0 12px; }
+.folder strong { color: var(--text); font-weight: 600; word-break: break-all; }
+.folder .check input:disabled + span { opacity: 0.45; }
