@@ -4,7 +4,7 @@
 이 문서는 대화의 원문이 아닙니다. 대화에서 한 요청, 결정, 작업, 측정 값을 정리한 것입니다.
 
 - 작성일: 2026-11-16 (2026-11-17에 0.4.0의 내용을 추가)
-- 현재 버전: 0.4.0
+- 현재 버전: 0.5.0
 - 브랜치: `claude/wizardly-cannon-esdvrm`
 - 사용 설명서: 같은 폴더의 `README.md`
 
@@ -14,6 +14,7 @@
 겹친 부분을 자르고, 긴 사진 한 장으로 이어 붙입니다. 사진 안의 글자를 텍스트로 변환할 수도 있습니다.
 
 0.4.0은 자동 업데이트를 추가한 버전입니다. 사용자의 PC에 설치했고, 예약 작업을 등록했습니다.
+0.5.0은 여러 페이지의 캡처를 추가한 버전입니다: 자동 스크롤이 끝나면 지정한 영역을 누르고, 다음 페이지에서 계속합니다.
 0.4.0은 커밋하고 브랜치에 푸시했습니다. 실제 웹사이트에서는 아직 시험하지 않았습니다.
 
 ## 2. 요청의 기록 (시간 순서)
@@ -32,6 +33,7 @@
 | 10 | Chrome이 "매니페스트 파일이 없거나 읽을 수 없습니다"를 보고 | 사용자가 저장소의 최상위 폴더를 선택했다. `scroll-capture` 폴더를 선택하는 단계를 안내했고, 사용자가 로드했다 |
 | 11 | 자동 업데이트 설정 | 예약 작업 `ScrollCapture-AutoUpdate`를 등록했다. 한 번 실행했고, 결과는 "변경 없음"이었다 |
 | 12 | 0.4.0을 GitHub에 올리기 | 커밋 `6b3affd`를 브랜치에 푸시했다 |
+| 13 | 여러 페이지를 자동 스크롤하고 싶다. 한 페이지의 스크롤이 끝나면 지정한 영역을 누르는 기능 | 0.5.0: 넘기는 영역의 지정, 페이지마다 저장, 누르기, 새 페이지 기다리기 |
 
 ## 3. 지금의 상태 (사용자의 PC)
 
@@ -40,7 +42,11 @@
 - 이 폴더는 OneDrive가 동기화하는 폴더이다. OneDrive가 파일을 잠그면 `git pull`이 실패할 수 있다.
   문제가 있으면 `C:Userslimit` 아래로 옮긴다. 옮긴 후에는 `install.ps1`을 다시 실행하고, Chrome에서 다시 로드한다.
 - 예약 작업 `ScrollCapture-AutoUpdate`를 등록했다 (60분 간격).
-- 0.4.0은 커밋 `6b3affd`이다. 사용자가 승인했고, 브랜치에 푸시했다. 이 PC에는 git의 사용자 이름 설정이 없다.
+- 개발용 복사본: `C:\Users\limit\scroll-capture-dev` (같은 브랜치, origin은 GitHub).
+  설치 폴더의 파일을 직접 바꾸지 않는다. Chrome은 압축해제된 확장 프로그램의 파일을 설치 폴더에서 바로 읽는다.
+  그래서 설치 폴더에서 개발하면 사용자가 개발 중인 코드를 실행한다.
+  개발용 복사본에서 개발하고, 시험하고, 푸시한다. 자동 업데이트가 설치 폴더에 전달한다.
+- 0.4.0은 커밋 `6b3affd`이다. 0.5.0은 그 다음의 "feat: 스크롤 캡처에 여러 페이지의 자동 캡처를 추가" 커밋이다. 사용자가 승인했고, 브랜치에 푸시했다. 이 PC에는 git의 사용자 이름 설정이 없다.
   그래서 이전 커밋과 같은 작성자를 `git -c user.name=... -c user.email=...`로 지정했다.
 - 이 폴더의 파일을 바꾸고 커밋하지 않으면, 원격 브랜치에 같은 파일을 바꾸는 커밋이 생긴 때에 `git pull --ff-only`가 실패한다.
 
@@ -73,6 +79,7 @@
 | `manifest.json` | Manifest V3. 권한: `activeTab`, `scripting`, `sidePanel`, `downloads`, `alarms`. WebAssembly를 허용하는 CSP |
 | `background.js` | 아이콘을 누르면 측면 패널을 연다 (`chrome.sidePanel.open`). 폴더의 버전을 확인하고, 다시 로드한다. ES 모듈이다 |
 | `update.js` | 자동 업데이트의 판단 (순수 함수) |
+| `pages.js` | 여러 페이지 캡처의 판단 (순수 함수) |
 | `auto-update/` | `pull.ps1` (git pull과 기록), `install.ps1`, `uninstall.ps1` (예약 작업의 등록과 제거) |
 | `content.js` | 페이지 스크립트. 스크롤 영역을 찾고, 위치를 읽고, 이동 경로를 재생하고, 고정 메뉴를 숨긴다 |
 | `sidepanel.html` / `.css` / `.js` | 측면 패널. 캡처, 사진 보관, 저장, 텍스트 변환을 제어한다 |
@@ -166,6 +173,35 @@
 - `self.__scUpdate.check()`는 시험이 사용한다.
 - 확장 프로그램은 외부로 요청을 보내지 않는다. 사이트 권한을 추가하지 않았다.
 
+### 6.9 여러 페이지 (`pages.js`, `content.js`, `sidepanel.js`의 `autoRun`, `turnPage`, `goNext`)
+
+- 사용자의 요청: 페이지를 넘겨서 여러 페이지를 자동 스크롤한다. 한 페이지가 끝나면 지정한 영역을 누른다.
+- 지정: 측면 패널이 `sc-pick-start`를 보낸다. 페이지 스크립트는 누름을 가로채고 (capture 단계, `preventDefault`),
+  영역을 기록하고, `sc-picked`를 보낸다. Esc 키는 `sc-pick-cancelled`를 보낸다. 지정한 후에 스크롤 위치를 지정하기 전의 위치로 돌린다.
+- 기록 (`target`): `mode`, `selector`, `tag`, `text`, `label`, `className`, `fx`, `fy` (화면에서의 위치의 비율).
+  - `mode: 'element'`: 누른 곳에 누를 수 있는 요소가 있다 (`a`, `button`, `[role=button]`, `[onclick]`, 또는 커서가 `pointer`).
+  - `mode: 'point'`: 그 밖의 경우. 화면의 같은 위치를 누른다 (`elementFromPoint`).
+  - 측면 패널의 "누르는 방식"이 `mode`를 바꾼다.
+- 요소를 찾는 규칙 (`findTarget`): 먼저 `selector`와 글자가 같은 요소. 없으면 같은 태그에서 글자가 같은 요소.
+  글자의 숫자는 `#`로 바꾸어서 비교한다. 글자가 숫자뿐이면 그대로 비교한다. 글자가 없으면 `label`, 그것도 없으면 `className`을 비교한다.
+  글자가 다른 요소는 사용하지 않는다. 이유: 첫 페이지에는 "이전" 버튼이 없다. 그래서 다음 페이지에서 같은 위치의 요소는 "이전" 버튼일 수 있다.
+  `[disabled]`, `[aria-disabled="true"]`, `.disabled`의 안에 있는 요소와 보이지 않는 요소는 사용하지 않는다.
+- 누르기 (`clickAt`): `pointerdown`, `mousedown`, `pointerup`, `mouseup`, `click`을 `dispatchEvent`로 보낸다. `isTrusted`는 false이다.
+  `chrome.debugger` 권한은 사용하지 않는다 (권한의 경고가 크다).
+- 순서 (`autoRun`): `autoScroll`이 `'end'`를 돌려주고 영역이 있으면 `turnPage`를 실행한다.
+  `turnPage`: `save` → 최대 페이지 수의 확인 → `goNext` → `reset` → `start({ sameTab: true })`. 그 다음에 `autoScroll`을 다시 실행한다.
+  최대 화면 수에서 끝난 페이지(`'limit'`)에서는 넘기지 않는다.
+- `goNext`: `sc-find-target`으로 요소를 확인하고, `sc-click-target`을 보낸다 (페이지가 바로 바뀌면 응답이 없다. 그래서 응답을 기다리지 않는다).
+  300ms마다 `sc-page-info`를 읽는다. 새 문서에는 페이지 스크립트가 없다. 그 경우에는 `content.js`를 다시 넣는다.
+  `docId` (페이지 스크립트의 번호), `url`, `hash` (`body.textContent`의 요약) 중에서 하나가 바뀌면 페이지가 바뀐 것이다.
+  그 다음에 "넘긴 후에 기다리는 시간"을 기다리고, 내용이 두 번 계속 같을 때까지 기다린다 (최대 15초). 마지막에 `sc-scroll-top`을 보낸다.
+- 정지: 페이지를 넘기는 중(`state.turning`)에는 "캡처 시작" 버튼이 "정지" 버튼이다. `state.cancelTurn`을 설정한다.
+- `state.pages`는 저장한 페이지의 기록이다 (`url`, `title`, `captures`, `positions`, `height`, `files`). 시험이 이것을 읽는다.
+- `state.turnTimeoutMs`는 페이지가 바뀌는 것을 기다리는 시간이다. 시험이 짧은 값으로 바꾼다.
+- 지정한 영역은 측면 패널의 메모리에만 있다. 저장하지 않는다 (`storage` 권한이 없다).
+- 권한을 추가하지 않았다. `activeTab`은 같은 사이트 안의 이동에서 유지된다. 다른 사이트로 이동하면 없어진다.
+  시험은 이것을 확인하지 못한다. 시험용 복사본에는 모든 사이트 권한이 있다 (7절).
+
 ## 7. 시험
 
 ```bash
@@ -180,8 +216,9 @@ node tests/e2e.mjs
 xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ```
 
-- 단위 시험 39개: `stitch`, `pace`, `ocr-tiles`, `update`.
-- 브라우저 시험 17개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota, update, update-apply.
+- 단위 시험 44개: `stitch`, `pace`, `ocr-tiles`, `update`, `pages`.
+- 브라우저 시험 23개: auto, manual, manual-fast, infinite, inner, each, filename, limit, long, scale, natural, natural-inner, ocr, ocr-stop, quota, update, update-apply,
+  pages, pages-limit, pages-spa, pages-point, pages-loop, pages-stop.
   이름의 일부로 선택할 수 있다 (예: `node tests/e2e.mjs natural ocr`). 전체 실행 시간은 약 5분이다.
 - 실제 사용 경로 시험 1개: 아이콘 누름과 같은 동작 → 측면 패널 → 캡처 → 저장. 배포하는 권한만 사용한다.
 
@@ -189,9 +226,10 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 
 - 사용자의 PC (Windows 11)에서 Playwright의 Chromium (chromium-1255)은 시작하지 못했다 ("side-by-side configuration is incorrect"). 원인은 찾지 못했다.
   그래서 Edge를 사용했다: `SC_CHANNEL=msedge`. Playwright는 저장소 밖의 폴더에 설치하고, `NODE_PATH`로 지정했다.
-- 이 환경(Windows, Edge)의 결과: 17개 중에서 15개 통과, 2개 실패. 실패한 2개는 0.3.0의 코드에서도 같은 값으로 실패한다. 0.4.0의 변경이 원인이 아니다.
+- 이 환경(Windows, Edge)의 결과: 23개 중에서 21개 통과, 2개 실패. 실패한 2개는 0.3.0의 코드에서도 같은 값으로 실패한다. 0.4.0의 변경이 원인이 아니다.
   - `manual`: 높이 3198, 기대 3205. Windows의 Edge에서 휠의 이동 거리가 시험의 값과 7픽셀 다르다. 원인은 조사하지 않았다.
   - `filename`: Windows는 한글 파일 이름을 거부하지 않는다. 이 시험은 Linux의 C 로케일에서만 의미가 있다.
+- 0.5.0의 전체 실행에서 `quota`가 한 번 실패했다 (`waitIdle`의 180초 시간 초과). 그 시험만 다시 3번 실행했고, 3번 모두 통과했다. 원인은 찾지 못했다.
 - `realflow.mjs`는 Xvfb가 필요하다. Windows에서는 실행하지 않았다. 0.4.0에서는 이 시험을 실행하지 않았다.
 - `pull.ps1`과 `install.ps1`의 자동 시험은 없다. 임시 저장소(한글 경로)에서 손으로 시험했다:
   변경 없음, 새 버전, 이 PC에서 바꾼 파일과의 충돌, git 저장소가 아닌 폴더, 예약 작업의 등록과 실행과 제거.
@@ -237,6 +275,9 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 ## 10. 아직 하지 않은 작업
 
 - 실제 웹사이트에서의 시험. 사용자가 자주 사용하는 사이트 3~5개를 아직 받지 못했다.
+  여러 페이지의 기능은 시험 페이지에서만 확인했다. 실제 사이트의 "다음" 버튼과 캡처 권한의 유지는 확인하지 않았다.
+- 여러 페이지에서 페이지마다 텍스트 변환을 수행하는 기능. 사용자에게 제안했고, 사용자는 아직 답하지 않았다.
+- 지정한 영역을 사이트별로 저장하는 기능 (`storage` 권한이 필요하다).
 - Linux에서 `realflow.mjs`의 실행 (0.4.0).
 - 기획서의 구조 그림은 구성 요소 5개를 보여준다. 텍스트 변환 모듈은 그림에 없다.
 - 기획서의 "나중" 항목: PDF 저장, 캡처 영역 선택, 클립보드에 사진 복사, 사이트별 규칙.
@@ -251,6 +292,12 @@ xvfb-run -a -s "-screen 0 1400x900x24" node tests/realflow.mjs
 - 고정 메뉴 숨기기는 `sticky` 요소를 모두 숨긴다. 내용의 일부인 요소(표의 머리글 등)도 숨길 수 있다.
 - 수동 스크롤에서 한 번에 한 화면보다 많이 이동하면 누락 영역이 생긴다.
 - 캡처 중에는 캡처 대상 탭이 화면에 보여야 한다.
+- 자동 스크롤은 끝에서 2픽셀 안의 위치를 페이지의 끝으로 판단한다 (`scrollY >= maxScrollY - 2`).
+  한 번의 이동이 그 위치에서 끝나면, 페이지의 마지막 1~2픽셀을 캡처하지 않는다. 0.3.0부터 있는 동작이다.
+- 여러 페이지: 누름 동작은 `isTrusted`가 false이다. 실제 누름만 받는 사이트에서는 페이지가 넘어가지 않는다.
+- 여러 페이지: 버튼의 글자가 페이지마다 완전히 다르면 그 버튼을 찾지 못한다. Shadow DOM 안의 버튼도 찾지 못한다.
+- 여러 페이지: 글자가 없는 버튼은 `className`으로 찾는다. "이전"과 "다음"의 `className`이 같으면 다른 버튼을 누를 수 있다.
+- 여러 페이지: 주소가 바뀌지 않는 사이트에서는 이미 캡처한 페이지를 판단하지 못한다. 최대 페이지 수가 반복을 끝낸다.
 
 ## 12. 작업의 규칙
 

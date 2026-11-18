@@ -598,6 +598,201 @@ test('update-apply: "지금 적용"을 누르면 바로 다시 로드한다', as
   return `버전 ${before} → ${after}`;
 });
 
+// ---------- 여러 페이지 ----------
+
+const BOOK_ROWS = 24;
+const NAV_HEIGHT = 60;
+const BOOK_HEIGHT = BOOK_ROWS * ROW + NAV_HEIGHT;
+const NAV_CSS = `
+  .navbar { display: flex; gap: 20px; align-items: center; height: ${NAV_HEIGHT}px; padding-left: 300px; background: rgb(30,30,30); }
+  .navbar a, .navbar button { color: #fff; background: none; border: 1px solid #fff; padding: 4px 12px; font: inherit; }
+`;
+
+// 여러 쪽의 책: 아래쪽에 "이전", "다음" 링크가 있다. 첫 쪽에는 "이전"이 없고, 마지막 쪽에는 "다음"이 없다.
+// loop=1: 마지막 쪽의 "다음"이 첫 쪽으로 이동한다.
+// num=1:  링크의 글자에 쪽 번호가 있다 ("다음 2쪽"). 글자가 쪽마다 다르다.
+pages['/book'] = (q) => {
+  const p = Number(q.get('p') || 1);
+  const last = Number(q.get('last') || 3);
+  const loop = q.get('loop') === '1';
+  const num = q.get('num') === '1';
+  const link = (n, text) =>
+    `<a class="nav" href="/book?p=${n}&last=${last}${loop ? '&loop=1' : ''}${num ? '&num=1' : ''}">${text}${num ? ` ${n}쪽` : ''}</a>`;
+  const nav = (p > 1 ? link(p - 1, '이전') : '') + (p < last ? link(p + 1, '다음') : loop ? link(1, '다음') : '');
+  return `<!doctype html><title>책 ${p}쪽</title><style>${BASE_CSS}${NAV_CSS}</style>
+    ${rowsHtml((p - 1) * 100, BOOK_ROWS)}<div class="navbar">${nav}</div>`;
+};
+
+// 주소가 바뀌지 않는 사이트: "다음" 버튼이 내용만 바꾼다. 스크롤 위치는 그대로이다. 마지막 쪽에서 버튼을 사용할 수 없다.
+pages['/spa'] = () => `<!doctype html><title>앱 1쪽</title><style>${BASE_CSS}${NAV_CSS}</style>
+  <div id="list">${rowsHtml(0, BOOK_ROWS)}</div><div class="navbar"><button id="next" type="button">다음</button></div>
+  <script>
+    const color = (i) => 'rgb(' + [(i*37+20)%256, (i*91+70)%256, (i*53+120)%256].join(',') + ')';
+    let p = 1;
+    document.getElementById('next').addEventListener('click', () => {
+      if (p >= 3) return;
+      p += 1;
+      const rows = [];
+      for (let k = 0; k < ${BOOK_ROWS}; k++) {
+        const i = (p - 1) * 100 + k;
+        rows.push('<div class="row" style="background:' + color(i) + '">' + i + '</div>');
+      }
+      document.getElementById('list').innerHTML = rows.join('');
+      document.title = '앱 ' + p + '쪽';
+      if (p === 3) document.getElementById('next').disabled = true;
+    });
+  </script>`;
+
+// 뷰어: 버튼이 없다. 화면의 오른쪽 부분을 누르면 다음 쪽으로 이동한다. 마지막 쪽에서는 아무 일도 없다.
+pages['/viewer'] = (q) => {
+  const p = Number(q.get('p') || 1);
+  const last = Number(q.get('last') || 2);
+  return `<!doctype html><title>뷰어 ${p}쪽</title><style>${BASE_CSS}</style>${rowsHtml((p - 1) * 100, BOOK_ROWS)}
+    <script>
+      document.addEventListener('click', (e) => {
+        if (e.clientX > innerWidth * 0.7 && ${p} < ${last}) location.href = '/viewer?p=${p + 1}&last=${last}';
+      });
+    </script>`;
+};
+
+const debug = (panel) => panel.evaluate(() => {
+  const s = window.__scDebug;
+  return { picking: s.picking, target: s.nextTarget, pages: s.pages, turning: s.turning, message: document.getElementById('message').textContent };
+});
+
+// 측면 패널에서 "넘기는 영역 지정"을 누르고, 페이지에서 한 곳을 누른다.
+async function pickTarget(panel, clickOnPage) {
+  await panel.click('#pick');
+  await panel.waitForFunction(() => window.__scDebug.picking, null, { timeout: 10_000 });
+  await clickOnPage();
+  await panel.waitForFunction(() => !window.__scDebug.picking && window.__scDebug.nextTarget, null, { timeout: 10_000 });
+  return (await debug(panel)).target;
+}
+
+// 자동 스크롤을 시작하고, 여러 페이지의 캡처가 끝날 때까지 기다린다.
+async function runPages(panel, { wait = '0.5', maxPages } = {}) {
+  await panel.fill('#turnWait', wait);
+  if (maxPages) await panel.fill('#maxPages', String(maxPages));
+  await panel.selectOption('#speed', 'fast');
+  await panel.click('#auto');
+  await panel.waitForFunction(
+    () => {
+      const s = window.__scDebug;
+      const done = /^페이지 \d+개를 저장했습니다/.test(document.getElementById('message').textContent);
+      return done && !s.capturing && !s.auto && !s.turning;
+    },
+    null,
+    { timeout: 180_000 },
+  );
+  return debug(panel);
+}
+
+const pageNumbers = (result) => result.pages.map((p) => Number(/(\d+)쪽/.exec(p.title)[1])).join(',');
+// 각 페이지를 처음부터 끝까지 캡처했는지 확인한다.
+// 자동 스크롤은 끝에서 2픽셀 안의 위치를 페이지의 끝으로 판단한다. 그래서 2픽셀까지의 차이를 허용한다.
+const assertFullPages = (result) => {
+  for (const p of result.pages) {
+    const full = p.title.startsWith('뷰어') ? BOOK_ROWS * ROW : BOOK_HEIGHT;
+    assert(p.positions[0] === 0, `"${p.title}"의 첫 캡처 위치 ${p.positions[0]}`);
+    assert(p.height <= full && p.height >= full - 2, `"${p.title}"의 높이 ${p.height}, 기대 ${full}, 위치 ${p.positions}`);
+  }
+  const files = result.pages.flatMap((p) => p.files);
+  assert(files.length === result.pages.length && new Set(files).size === files.length, `파일 ${files}`);
+};
+
+test('pages: 넘기는 영역을 누르고, 마지막 페이지까지 캡처하고 저장한다', async (browser, base) => {
+  const start = `${base}/book?p=1&last=3`;
+  const { page, panel } = await open(browser, start);
+
+  // Esc 키는 지정을 취소한다.
+  await panel.click('#pick');
+  await panel.waitForFunction(() => window.__scDebug.picking);
+  await page.bringToFront();
+  await page.keyboard.press('Escape');
+  await panel.waitForFunction(() => !window.__scDebug.picking);
+  assert((await debug(panel)).target === null, 'Esc 키를 눌렀는데 영역을 지정했다');
+
+  // 지정할 때의 누름은 페이지에 전달하지 않는다. 스크롤 위치는 지정하기 전의 위치로 돌아간다.
+  const target = await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  assert(target.mode === 'element' && target.text === '다음' && target.tag === 'a', `지정한 영역 ${JSON.stringify(target)}`);
+  assert(page.url() === start, `지정 중에 페이지가 이동했다: ${page.url()}`);
+  assert((await page.evaluate(() => scrollY)) === 0, '스크롤 위치가 돌아가지 않았다');
+  assert((await panel.textContent('#nextInfo')).includes('"다음"'), await panel.textContent('#nextInfo'));
+  assert((await page.locator('html > div').count()) === 0, '지정이 끝났는데 표시가 남아 있다');
+
+  const result = await runPages(panel);
+  assert(pageNumbers(result) === '1,2,3', `저장한 페이지 ${pageNumbers(result)}`);
+  assertFullPages(result);
+  assert(result.message.includes('페이지 3개') && result.message.includes('마지막 페이지'), result.message);
+  assert(page.url().includes('p=3'), `마지막 주소 ${page.url()}`);
+  return `${result.pages.map((p) => `${p.title} ${p.height}px`).join(', ')}. ${result.message}`;
+});
+
+test('pages-limit: 최대 페이지 수에서 정지하고, 영역을 누르지 않는다', async (browser, base) => {
+  // 링크의 글자에 쪽 번호가 있다 ("다음 2쪽", "다음 3쪽"). 프로그램은 숫자를 제외하고 글자를 비교한다.
+  const { page, panel } = await open(browser, `${base}/book?p=1&last=5&num=1`);
+  const target = await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  assert(target.text === '다음 2쪽', `지정한 영역 ${JSON.stringify(target)}`);
+  const result = await runPages(panel, { maxPages: 2 });
+  assert(pageNumbers(result) === '1,2', `저장한 페이지 ${pageNumbers(result)}`);
+  assert(result.message.includes('최대 페이지 수(2)'), result.message);
+  assert(page.url().includes('p=2'), `마지막 주소 ${page.url()}`);
+  return result.message;
+});
+
+test('pages-spa: 주소가 바뀌지 않는 사이트에서 새 내용을 처음부터 캡처한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/spa`);
+  const target = await pickTarget(panel, () => page.locator('#next').click());
+  assert(target.mode === 'element' && target.tag === 'button', `지정한 영역 ${JSON.stringify(target)}`);
+  assert((await page.title()) === '앱 1쪽', '지정 중에 페이지가 바뀌었다');
+  const result = await runPages(panel);
+  assert(pageNumbers(result) === '1,2,3', `저장한 페이지 ${pageNumbers(result)}`);
+  assertFullPages(result);
+  assert(result.message.includes('이 페이지에 없습니다'), result.message);
+  return result.message;
+});
+
+test('pages-point: 버튼이 아닌 곳을 지정하면 화면의 같은 위치를 누른다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/viewer?p=1&last=2`);
+  const view = await viewOf(page);
+  const target = await pickTarget(panel, () => page.mouse.click(Math.round(view.w * 0.9), 300));
+  assert(target.mode === 'point' && Math.abs(target.fx - 0.9) < 0.01, `지정한 영역 ${JSON.stringify(target)}`);
+  assert(page.url().includes('p=1'), '지정 중에 페이지가 이동했다');
+  assert((await panel.inputValue('#pickMode')) === 'point', '누르는 방식의 표시');
+  await panel.evaluate(() => { window.__scDebug.turnTimeoutMs = 3000; });
+  const result = await runPages(panel);
+  assert(pageNumbers(result) === '1,2', `저장한 페이지 ${pageNumbers(result)}`);
+  assertFullPages(result);
+  assert(result.message.includes('페이지가 바뀌지 않았습니다'), result.message);
+  return result.message;
+});
+
+test('pages-loop: 이미 캡처한 주소로 이동하면 정지한다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/book?p=1&last=2&loop=1`);
+  await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  const result = await runPages(panel);
+  assert(pageNumbers(result) === '1,2', `저장한 페이지 ${pageNumbers(result)}`);
+  assert(result.message.includes('이미 캡처한 페이지'), result.message);
+  return result.message;
+});
+
+test('pages-stop: 페이지를 넘기는 중에 "정지"를 누르면 끝낸다', async (browser, base) => {
+  const { page, panel } = await open(browser, `${base}/book?p=1&last=5`);
+  await pickTarget(panel, () => page.locator('a.nav', { hasText: '다음' }).click());
+  await panel.fill('#turnWait', '20');
+  await panel.selectOption('#speed', 'fast');
+  await panel.click('#auto');
+  await panel.waitForFunction(() => window.__scDebug.turning && window.__scDebug.pages.length === 1, null, { timeout: 60_000 });
+  assert((await panel.textContent('#toggle')) === '정지', '페이지를 넘기는 중의 버튼');
+  assert((await panel.textContent('#state')) === '페이지 넘기는 중', await panel.textContent('#state'));
+  await panel.click('#toggle');
+  await panel.waitForFunction(() => !window.__scDebug.turning, null, { timeout: 30_000 });
+  const result = await debug(panel);
+  assert(result.pages.length === 1 && result.message.includes('정지했습니다'), result.message);
+  assert((await panel.textContent('#toggle')) === '캡처 시작', '정지한 후의 버튼');
+  return result.message;
+});
+
 // ---------- 실행 ----------
 
 const server = await startServer();
